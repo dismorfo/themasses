@@ -1,0 +1,35 @@
+K 25
+svn:wc:ra_dav:version-url
+V 52
+/svn/dlib/!svn/ver/12711/drupal_modules/7/annotation
+END
+annotation.install
+K 25
+svn:wc:ra_dav:version-url
+V 71
+/svn/dlib/!svn/ver/12589/drupal_modules/7/annotation/annotation.install
+END
+annotation.php
+K 25
+svn:wc:ra_dav:version-url
+V 67
+/svn/dlib/!svn/ver/12711/drupal_modules/7/annotation/annotation.php
+END
+annotation.info
+K 25
+svn:wc:ra_dav:version-url
+V 68
+/svn/dlib/!svn/ver/12593/drupal_modules/7/annotation/annotation.info
+END
+annotation.module
+K 25
+svn:wc:ra_dav:version-url
+V 70
+/svn/dlib/!svn/ver/12589/drupal_modules/7/annotation/annotation.module
+END
+annotation.views.inc
+K 25
+svn:wc:ra_dav:version-url
+V 73
+/svn/dlib/!svn/ver/12589/drupal_modules/7/annotation/annotation.views.inc
+END

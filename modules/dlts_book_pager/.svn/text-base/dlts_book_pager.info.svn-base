@@ -1,0 +1,9 @@
+name = DLTS Book Page Turning Utilities
+description = Module for page turning functionality
+package = DLTS
+project = "dlts_books"
+
+files[] = dlts_book_page.module
+
+core = 7.x
+version = "7.x-dev"

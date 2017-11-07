@@ -1,0 +1,118 @@
+<?php
+
+/**
+ * Implements hook_cron().
+ * http://api.drupal.org/api/drupal/modules%21system%21system.api.php/function/hook_cron/7
+ */
+function dlts_ocr_cron() {
+
+  if ( db_table_exists('dlts_ocr') ) {
+    
+    /** Load utilities */
+    module_load_include('inc', 'dlts_utilities', 'inc/dlts_utilities.book');
+    module_load_include('inc', 'dlts_utilities', 'inc/dlts_utilities.book_page');
+    
+    $result = db_query('SELECT nid FROM {dlts_ocr} WHERE extracted = 0 AND type = :t1 LIMIT 25', array('t1' => 'dlts_book'));
+
+    foreach ($result as $info) {
+      
+      /** For each book concatenate OCR text into $ocr */
+      $book_ocr = '';
+      $page_ocr = '';
+      
+      /** Load book by nid */
+      $node = node_load($info->nid);
+      
+      /** Book identifier */
+      $identifier = dlts_utilities_book_identifier($node);
+      
+      /** Get all book pages by the book identifier */
+      $query_book_pages = new EntityFieldQuery();
+      $query_book_pages->entityCondition('entity_type', 'node', '=');
+      $query_book_pages->entityCondition('bundle', 'dlts_book_page');
+      $query_book_pages->propertyCondition('status', 1);
+      $query_book_pages->fieldCondition('field_is_part_of', 'value', $identifier, '=');
+      $query_book_pages->addMetaData('account', user_load(1));
+      
+      $results = $query_book_pages->execute();
+
+      if (isset($results['node'])) {
+        
+        /** Get the keys from the results array, each id represent a book page nid */
+        $nids = array_keys($results['node']);
+
+        /** Load book page */
+        $book_pages = entity_load('node', $nids);
+        
+        foreach ($book_pages as $book_page) {
+          
+          /** Concatenate book pages into $ocr_text */
+          $ocr_text = dlts_utilities_field_get_first_item('node', $book_page, 'field_ocr_text');
+        
+          if (!empty($ocr_text['safe_value'])) {
+          
+            $tmp_page = filter_xss(trim($ocr_text['safe_value']));
+            $tmp_page_sequence =  dlts_utilities_book_page_get_sequence_number($book_page);
+          
+            /** Update book page */ 
+            $dbup = db_update('dlts_ocr')->fields(
+              array(
+                'extracted' => 1, 
+                'sequence' => $tmp_page_sequence, 
+                'identifier' => $identifier, 
+                'body' => $tmp_page
+              )
+            )
+            ->condition('nid', $book_page->nid, '=')
+            ->execute();
+        
+            /** OCR text */
+            $book_ocr .= ' ' . $ocr_text['safe_value'] . ' ';
+          }
+        }
+      }
+      
+      /** Update book */ 
+      $num_updated = db_update('dlts_ocr')
+        ->fields(
+          array(
+            'extracted' => 1,
+            'body' => $book_ocr,
+            'identifier' => $identifier,
+          )
+        )
+        ->condition('nid', $info->nid, '=')
+        ->execute();
+    }
+  }
+}
+
+/**
+ * Build the documents before sending them to Solr.
+ * The function is the follow-up for apachesolr_update_index
+ *
+ * @param integer $document_id
+ * @param array $entity
+ * @param string $entity_type
+ */
+function dlts_ocr_apachesolr_index_document_build(ApacheSolrDocument $document, $entity, $entity_type, $env_id) {
+  $ocr = dlts_ocr_get_content($entity);
+  if (!empty($ocr)) {
+    $document->addField('ts_ocr', $ocr);
+    $content = $document->getField('content');
+    $document->setField('content', $content['value'] . '' . $ocr);
+  }
+}
+
+function dlts_ocr_get_content($entity) {
+  if ( db_table_exists('dlts_ocr') ) {
+    $ocr = db_query("SELECT safe_value FROM {dlts_ocr} WHERE nid = :nid AND cleaned = 1", array(':nid' => $entity->nid))->fetchAssoc();
+    if (isset($ocr['body'])) {
+      return $ocr['body'];
+    }
+    else {
+      return FALSE;
+    }
+  }
+  return FALSE;
+}

@@ -1,0 +1,12 @@
+name = DLTS Solr
+description = DLTS Apache Solr helper
+package = DLTS
+core = 7.x
+version = "7.x-1.5"
+dependencies[] = apachesolr
+dependencies[] = facetapi
+dependencies[] = apachesolr_search
+dependencies[] = dlts_utilities
+dependencies[] = entity
+
+configure = admin/config/search/apachesolr/dlts_solr

@@ -1,0 +1,38 @@
+<?php
+
+/**
+ * @file
+ *   Install and related hooks for apachesolr_search.
+ */
+
+/**
+ * Implements hook_requirements().
+ */
+ 
+function dlts_solr_requirements ( $phase ) {
+  $requirements = array();
+  if ($phase != 'runtime') {
+    return $requirements;
+  }
+  return $requirements;
+}
+
+/**
+ * Implements hook_enable().
+ */
+function dlts_solr_enable() {
+
+  // Set DEV Discovery as default search enviorment
+  db_update('apachesolr_environment')->fields(array('env_id' => 'solr', 'name' => 'Discovery Apache Solr 3.x server', 'url' => 'http://dev-discovery.dlib.nyu.edu:8080/solr3_discovery/core0'))->execute();
+  
+  // Completely build the index table.
+  drupal_set_message(st('DLTS Solr is enabled. Visit the <a href="!settings_link">settings page</a>.', array('!settings_link' => url('admin/config/search/apachesolr/dlts_solr')))); 
+}
+
+/**
+ * Implements hook_uninstall().
+ */
+function dlts_solr_uninstall() {
+  // Remove variables.
+  variable_del('dlts_solr_field_nyu_collectionId');
+}

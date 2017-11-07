@@ -1,0 +1,56 @@
+<?php
+
+/*
+ * @file
+ * Simpletest; See: http://drupal.org/node/890654 
+ */
+
+class DLTSImage extends DrupalUnitTestCase {
+
+  protected $privileged_user;
+
+  public static function getInfo() {
+    return array(
+      'name' => 'DLTS Image tests',
+      'description' => 'Tests for the DLTS Image module.',
+      'group' => 'DLTS',
+    );
+  }
+  
+ /*
+  
+  public function setUp() {
+    parent::setUp('dlts_image');  // Enable dlts_image
+    
+    /*
+     * Create and log in our user. The user has the arbitrary privilege
+     * 'extra special edit any simpletest_example' which the code uses
+     * to grant access.
+     */ 
+    
+    $this->privileged_user = $this->drupalCreateUser(array('create simpletest_example content', 'extra special edit any simpletest_example'));
+    $this->drupalLogin($this->privileged_user);    
+
+  }
+  
+  */
+  
+  /*
+   * Create a simpletest_example node using the node form
+
+  
+  public function testSimpleTestExampleCreate() {
+    // Create node to edit.
+    $edit = array();
+    $edit['title'] = $this->randomName(8);
+    $edit["body[und][0][value]"] = $this->randomName(16);
+    $this->drupalPost('node/add/simpletest-example', $edit, t('Save'));
+    $this->assertText(t('Simpletest Example Node Type @title has been created.', array('@title' => $edit['title'])));
+  }
+  
+ */
+
+
+}
+
+?>

@@ -1,0 +1,15 @@
+name = DLTS Shapes
+description = Services to consume the data in order to highlight regions.
+package = DLTS
+core = 7.x
+
+files[] = dlts_shapes.module
+files[] = dlts_shapes.admin.inc
+files[] = css/dlts_shapes.css
+
+dependencies[] = apachesolr
+dependencies[] = apachesolr_search
+dependencies[] = dlts_utilities
+dependencies[] = dlts_solr
+
+configure = admin/config/dlts/shapes/ocr/search

@@ -1,0 +1,8 @@
+name = DLTS DMD Multiplier
+description = Lets User mass populate DMD from a source node. Books only, for now.
+package = DLTS
+core = 7.x
+
+files[] = dlts_dmd_multiplier.module
+
+dependencies[] = views_bulk_operations

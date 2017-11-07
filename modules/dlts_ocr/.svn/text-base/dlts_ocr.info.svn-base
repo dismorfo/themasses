@@ -1,0 +1,8 @@
+name = DLTS OCR Apache Solr helper 
+description = Add support for OCR search.
+package = DLTS
+project = dlts_ocr
+
+configure = admin/config/dlts/ocr
+
+core = 7.x

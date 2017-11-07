@@ -1,0 +1,1 @@
+Please read js/openlayers/README.txt

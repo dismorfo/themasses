@@ -1,0 +1,41 @@
+K 25
+svn:wc:ra_dav:version-url
+V 62
+/svn/dlib/!svn/ver/13913/drupal_themes/7/dlts_book/trunk/views
+END
+views-view-unformatted--collection-books.tpl.php
+K 25
+svn:wc:ra_dav:version-url
+V 111
+/svn/dlib/!svn/ver/13913/drupal_themes/7/dlts_book/trunk/views/views-view-unformatted--collection-books.tpl.php
+END
+views-view--dlts-image--page.tpl.php
+K 25
+svn:wc:ra_dav:version-url
+V 99
+/svn/dlib/!svn/ver/13273/drupal_themes/7/dlts_book/trunk/views/views-view--dlts-image--page.tpl.php
+END
+views-view--book-description--block.tpl.php
+K 25
+svn:wc:ra_dav:version-url
+V 106
+/svn/dlib/!svn/ver/13383/drupal_themes/7/dlts_book/trunk/views/views-view--book-description--block.tpl.php
+END
+views-view-field--Books--page--title.tpl.php
+K 25
+svn:wc:ra_dav:version-url
+V 107
+/svn/dlib/!svn/ver/12735/drupal_themes/7/dlts_book/trunk/views/views-view-field--Books--page--title.tpl.php
+END
+views-view--books-json.tpl.php
+K 25
+svn:wc:ra_dav:version-url
+V 93
+/svn/dlib/!svn/ver/13681/drupal_themes/7/dlts_book/trunk/views/views-view--books-json.tpl.php
+END
+views-view--book-thumbnails--page.tpl.php
+K 25
+svn:wc:ra_dav:version-url
+V 104
+/svn/dlib/!svn/ver/12735/drupal_themes/7/dlts_book/trunk/views/views-view--book-thumbnails--page.tpl.php
+END

@@ -1,0 +1,120 @@
+$grid-columns: 12;
+
+/*
+Page container
+*/
+.wrapper {
+	margin:0 auto;
+}
+
+/*
+Column container
+*/
+.grids {
+	width:auto;
+	max-width:792px;
+	clear:both;
+	margin:0 0 0 -2.525%;
+	list-style:none; /* So we can make grids out of lists. */
+	overflow:hidden; /* Clear the floats */
+}
+
+[class^="grid-"]{
+	float:left;
+	margin:0 2.525% 0 0;
+}
+.grids [class^="grid-"]{
+	margin:0 0 0 2.525%;
+}
+
+.grid-1{ width:5.808% }
+.grid-2{ width:14.141% }
+.grid-3{ width:22.475% }
+.grid-4{ width:30.808% }
+.grid-5{ width:39.141% }
+.grid-6{ width:47.475% }
+.grid-7{ width:55.808% }
+.grid-8{ width:64.141% }
+.grid-9{ width:72.475% }
+.grid-10{ width:80.808% }
+.grid-11{ width:89.141% }
+.grid-12{ width:97.475%; margin:0; }
+
+
+body {
+  font: 14px/1.5em;
+}
+
+pre,
+code {
+  font-family: 'DejaVu Sans Mono', Monaco, Consolas, monospace;
+}
+
+hr {
+  border: 0 #ccc solid;
+  border-top-width: 1px;
+  clear: both;
+  height: 0;
+}
+
+/* `Headings
+----------------------------------------------------------------------------------------------------*/
+
+h1 {
+  font-size: 1.714em; /* 24px */
+}
+
+h2 {
+  font-size: 1.571em; /* 22px */
+}
+
+h3 {
+  font-size: 1.429em; /* 20px */
+}
+
+h4 {
+  font-size: 1.286em; /* 18px */
+}
+
+h5 {
+  font-size: 1.143em; /* 16px */
+}
+
+h6 {
+  font-size: 1.071em; /* 15px */
+}
+
+/* `Spacing
+----------------------------------------------------------------------------------------------------*/
+
+ol {
+  list-style: decimal;
+}
+
+ul {
+  list-style: disc;
+}
+
+li {
+  margin-left: 30px;
+}
+
+p,
+dl,
+hr,
+h1,
+h2,
+h3,
+h4,
+h5,
+h6,
+ol,
+ul,
+pre,
+table,
+address,
+fieldset,
+figure {
+  margin-bottom: 20px;
+}
+

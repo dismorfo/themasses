@@ -1,0 +1,13 @@
+name = DLTS Book oEmbed
+description = DLTS Book oEmbed is a sub theme of DLTS Media, meant to be used with DLTS Book Apis.
+core = 7.x
+engine = phptemplate
+version = 1.x
+screenshot = screenshot.png
+base theme = dlts_media
+
+stylesheets[all][] = css/dlts_book.css
+scripts[] = js/ui-scripts.js
+
+regions[content] = Content
+features[] = favicon

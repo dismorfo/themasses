@@ -1,0 +1,361 @@
+<?php
+// $Id$: dlts_book_pager.module
+
+  /* This is a utility that adds next and previous page links to
+   * DLTS book pages. It uses the hook_node_load function to add navigation links to nodes of type 'dlts_book_page and 'dlts_book_stitched_page'
+	 * http://api.drupal.org/api/function/hook_node_load
+	 * Written by Brian Hoffman bh@nyu.edu
+   */
+
+/*
+ * Handle real page urls.
+ */
+function dlts_book_pager_menu() {
+  $items['books/%/page/%'] = array(
+    'title' => 'Handle real page urls.',
+    'page callback' => 'redirect_dlts_real_page',
+    'page arguments' => array(1, 3),
+	  'access callback' => TRUE,
+    'type' => MENU_CALLBACK,
+  );
+  return $items;
+}
+/*
+ * Redirect real page urls.
+ */
+function redirect_dlts_real_page($dlts_id, $real_page_num)
+{
+  $query = new EntityFieldQuery();
+  $query->entityCondition('entity_type', 'node', '=')
+    ->fieldCondition('field_identifier', 'value', $dlts_id, '=');
+  $result = $query->execute();
+  foreach ($result['node'] as $node) {
+    $book_nid = $node->nid;
+  }
+
+  $query_tmpl =
+   "SELECT   real_num.entity_id AS nid,
+             real_num.field_real_page_number_value AS real_no
+    FROM     {field_data_field_real_page_number} real_num,
+             {field_data_field_visible} visible,
+             {field_data_field_book} book
+    WHERE    real_num.entity_id = visible.entity_id
+    AND      real_num.entity_id = book.entity_id
+    AND      visible.field_visible_value = 1
+    AND      book.field_book_nid = $book_nid
+    AND      CAST(real_num.field_real_page_number_value AS UNSIGNED)
+                 %OP% $real_page_num
+    ORDER BY CAST(real_no AS UNSIGNED) %ORDER%
+    LIMIT    1";
+
+  goto_dlts_page($query_tmpl, '=', 'ASC');
+  goto_dlts_page($query_tmpl, '<', 'DESC');
+  goto_dlts_page($query_tmpl, '>', 'ASC');
+
+  drupal_goto("node/$book_nid");
+}
+
+function goto_dlts_page($query_tmpl, $op, $order)
+{
+  $query = str_replace(array('%OP%', '%ORDER%'),
+    array($op, $order), $query_tmpl);
+  $result = db_query($query);
+  if ($result->rowCount() == 1)
+  {
+    $record = $result->fetchObject();
+    drupal_goto("node/$record->nid");
+  }
+}
+
+/**
+ * Implementation of hook_theme().
+ */
+
+function dlts_book_pager_theme() {
+  return array(
+    'dlts_book_pager_button' => array(
+      'arguments' => array(
+        'url' => NULL,
+        'text' => NULL,
+        'attributes' => NULL,
+      ),
+    ),
+    'dlts_book_pager_button_inactive' => array(
+      'arguments' => array(
+        'text' => NULL,
+        'attributes' => NULL,
+      ),
+    ),
+  );
+}
+
+/* Basic theming functions used to build the links. 
+*  These can be modified by a designer as necessary
+*/
+
+function theme_dlts_book_pager_link( $arguments ) {
+  return l( $arguments['text'], $arguments['url'], $arguments );
+}
+
+function theme_dlts_book_pager_span( $arguments ) {
+  return '<span class="' . $arguments['attributes']['class'] . '" title="' . $arguments['attributes']['title'] . '">' . $arguments['attributes']['title'] . '</span>';
+}
+
+/* When a page or stitched page node is loaded, this function will 
+*  perform some queries to find the entity ids of the previous page, following 
+*  page, etc. It will then add the link to each related page to the node
+*/
+
+
+function dlts_book_pager_node_load($nodes, $types) {
+  if ( in_array( "dlts_book_page", $types ) || in_array( "dlts_book_stitched_page", $types ) ) {
+    foreach ( $nodes as $node ) {
+
+      switch ( $node->type ) {
+          case 'dlts_book_page':
+
+          # the book this page belongs to
+          $book_nid = array_pop( array_pop( field_get_items('node', $node, 'field_book') ) );
+
+          # the sequence number of this page
+          $page_sequence_number = array_pop( array_pop( field_get_items('node', $node, 'field_sequence_number') ) );
+
+          # Need Error handling here if these values don't exist
+          
+          # the hand side value of this page
+          $page_hand_side = array_pop( array_pop( field_get_items('node', $node, 'field_hand_side') ) );
+
+
+          $query_tmpl = 
+            "SELECT sn.entity_id FROM {field_data_field_sequence_number} sn 
+             LEFT JOIN {field_data_field_visible} v 
+             ON sn.entity_id = v.entity_id 
+             LEFT JOIN {field_data_field_book} b 
+             ON sn.entity_id = b.entity_id 
+             WHERE b.field_book_nid = :bnid 
+             AND sn.field_sequence_number_value %OP% :snum 
+             AND v.field_visible_value = :vis 
+             ORDER BY sn.field_sequence_number_value 
+             %ORDER% LIMIT 1", array( ':bnid' => $book_nid, ':snum' => $page_sequence_number, ':vis' => 1) );
+
+            
+          
+          #link to first page in book
+          /*
+          NEEDS TO BE REWORKED - NEEDS TO CHECK SETTINGS BEFORE BUILDING THIS
+				  $firstresult = db_query("SELECT sn.entity_id FROM {field_data_field_sequence_number} sn LEFT JOIN {field_data_field_visible} v ON sn.entity_id = v.entity_id LEFT JOIN {field_data_field_book} b ON sn.entity_id = b.entity_id WHERE b.field_book_nid = :bnid AND sn.field_sequence_number_value < :snum AND v.field_visible_value = :vis ORDER BY sn.field_sequence_number_value ASC LIMIT 1", array( ':bnid' => $book_nid, ':snum' => $page_sequence_number, ':vis' => 1) );
+
+				  if ( $firstresult->rowCount() == 1 ) {
+				    foreach ($firstresult as $row) {
+	              $node->firstpage = theme('dlts_book_pager_button', array( 'id' => 'first-page', 'type' => 'pagenav', 'active' => TRUE, 'url' => 'node/' . $row->entity_id, 'text' => t('First Page'), 'attributes' => array('title' => t('First Page'), 'class' => 'first-page') ) );
+            }
+					  
+				  } else {
+					  $node->firstpage = theme('dlts_book_pager_button', array( 'text' => t('No First Page'), 'attributes' => array('title' => t('No First Page'), 'class' => 'first-page-off') ) );
+				  }
+				 */
+
+	
+	
+				 
+				  #link to previous page
+	
+	  
+	        $node->prevpage = _build_pager_button($query_tmpl, '<', 'DESC');
+	        
+	        $node->nextpage = _build_pager_button($query_tmpl, '>', 'ASC');
+	
+	    /*
+				  $prevresult = db_query("SELECT sn.entity_id FROM {field_data_field_sequence_number} sn LEFT JOIN {field_data_field_visible} v ON sn.entity_id = v.entity_id LEFT JOIN {field_data_field_book} b ON sn.entity_id = b.entity_id WHERE b.field_book_nid = :bnid AND sn.field_sequence_number_value < :snum AND v.field_visible_value = :vis ORDER BY sn.field_sequence_number_value DESC LIMIT 1", array( ':bnid' => $book_nid, ':snum' => $page_sequence_number, ':vis' => 1) );
+
+          
+
+				  if ( $prevresult->rowCount() == 1 ) {
+				    foreach ($prevresult as $row) {
+	              $node->prevpage = theme('dlts_book_pager_button', array( 
+                  'id' => 'previous-page',
+	                'url' => 'node/' . $row->entity_id, 
+                  'active' => TRUE, ));
+            }
+
+				  } else {
+            $node->prevpage = theme('dlts_book_pager_button', array( 
+              'id' => 'previous-page',
+              'url' => NULL,
+              'active' => FALSE, ));
+				  }
+
+				  #link to next page
+				  $nextresult = db_query("SELECT sn.entity_id FROM {field_data_field_sequence_number} sn LEFT JOIN {field_data_field_visible} v ON sn.entity_id = v.entity_id LEFT JOIN {field_data_field_book} b ON sn.entity_id = b.entity_id WHERE b.field_book_nid = :bnid AND sn.field_sequence_number_value > :snum AND v.field_visible_value = :vis ORDER BY sn.field_sequence_number_value ASC LIMIT 1", array( ':bnid' => $book_nid, ':snum' => $page_sequence_number, ':vis' => 1) );
+
+				  if ( $nextresult->rowCount() == 1 ) {
+				    foreach ($nextresult as $row) {
+	              #$node->nextpage = theme('dlts_book_pager_button_pagenav', array( 'url' => 'node/' . $row->entity_id, 'text' => t('Next Page'), 'attributes' => array('title' => t('Next Page'), 'class' => 'next-page') ) );
+                $node->nextpage = theme('dlts_book_pager_button', array( 
+                  'id' => 'next-page',
+	                'url' => 'node/' . $row->entity_id, 
+                  'active' => TRUE, ));
+            } 
+					  
+				  } else {
+					  #$node->nextpage = theme('dlts_book_pager_button_pagenav', array( 'text' => t('No Next Page'), 'attributes' => array('title' => t('No Next Page'), 'class' => 'next-page-off') ) );
+					  $node->nextpage = theme('dlts_book_pager_button', array( 
+              'id' => 'next-page',
+              'url' => NULL;
+              'active' => FALSE, ));					  
+				  }
+			*/	  
+				  #link to last page
+				  /* NEEDS TO BE REWORKED, AS WITH FIRST PAGE
+				  $lastresult = db_query("SELECT sn.entity_id FROM {field_data_field_sequence_number} sn LEFT JOIN {field_data_field_visible} v ON sn.entity_id = v.entity_id LEFT JOIN {field_data_field_book} b ON sn.entity_id = b.entity_id WHERE b.field_book_nid = :bnid AND sn.field_sequence_number_value > :snum AND v.field_visible_value = :vis ORDER BY sn.field_sequence_number_value DESC LIMIT 1", array( ':bnid' => $book_nid, ':snum' => $page_sequence_number, ':vis' => 1) );
+
+				  if ( $lastresult->rowCount() == 1 ) {
+				    foreach ($lastresult as $row) {
+	
+              $node->lastpage = theme('dlts_book_pager_button_pagenav', array( 'url' => 'node/' . $row->entity_id, 'text' => t('Last Page'), 'attributes' => array('title' => t('Last Page'), 'class' => 'last-page') ) );
+            }
+					  
+				  } else {
+					  $node->lastpage = theme('dlts_book_pager_button_pagenav', array( 'text' => t('No Last Page'), 'attributes' => array('title' => t('No Last Page'), 'class' => 'last-page-off') ) );
+				  }
+				  */
+
+          #toggle to double page view link
+          #hand side values: 0 = Right; 1= Left
+          
+          
+          if ( $page_hand_side == 1 ) {            
+
+            $toggleresult = db_query("SELECT snl.entity_id FROM {field_data_field_sequence_number_left} snl LEFT JOIN {field_data_field_book} b ON snl.entity_id = b.entity_id WHERE b.field_book_nid = :bnid AND snl.field_sequence_number_left_value = :snum LIMIT 1", array( ':bnid' => $book_nid, ':snum' => $page_sequence_number) );
+          } elseif (   $page_hand_side == 0 ) {            
+
+            $toggleresult = db_query("SELECT snr.entity_id FROM {field_data_field_sequence_number_right} snr LEFT JOIN {field_data_field_book} b ON snr.entity_id = b.entity_id WHERE b.field_book_nid = :bnid AND snr.field_sequence_number_right_value = :snum LIMIT 1", array( ':bnid' => $book_nid, ':snum' => $page_sequence_number) );
+          }
+
+
+          if ( $toggleresult->rowCount() == 1 ) {
+            foreach ($toggleresult as $row) {
+	
+					      $node->togglepage = theme('dlts_book_pager_button', array( 
+                  'id' => 'toggle-page',
+					        'url' => 'node/' . $row->entity_id, 
+                  'active' => TRUE, ) );
+					    }
+				  } else {
+					  $node->togglepage = theme('dlts_book_pager_button', array( 
+              'id' => 'toggle-page',
+              'url' => NULL,
+              'active' => FALSE, ) );
+    			}
+				*/  
+			  break;
+
+			  case 'dlts_book_stitched_page':
+			  
+          # the book this page belongs to
+          $book_nid = array_pop( array_pop( field_get_items('node', $node, 'field_book') ) );
+
+          # the left-side sequence number of this double page
+          $page_sequence_number = array_pop( array_pop( field_get_items('node', $node, 'field_sequence_number_left') ) );
+
+          #link to first page in book
+  			  $firstresult = db_query("SELECT snl.entity_id FROM {field_data_field_sequence_number_left} snl LEFT JOIN {field_data_field_book} b ON snl.entity_id = b.entity_id WHERE b.field_book_nid = :bnid AND snl.field_sequence_number_left_value < :snum ORDER BY snl.field_sequence_number_left_value ASC LIMIT 1", array( ':bnid' => $book_nid, ':snum' => $page_sequence_number) );
+
+  			  if ( $firstresult->rowCount() == 1 ) {
+  			    foreach ($firstresult as $row) {
+                $node->firstpage = theme('dlts_book_pager_button', array( 'url' => 'node/' . $row->entity_id, 'text' => t('First Page'), 'attributes' => array('title' => t('First Page'), 'class' => 'first-page') ) );
+            }
+				  
+  			  } else {
+  				  $node->firstpage = theme('dlts_book_pager_button_inactive', array( 'text' => t('No First Page'), 'attributes' => array('title' => t('No First Page'), 'class' => 'first-page-off') ) );
+  			  }
+			  
+  			  #link to previous page
+  			  $prevresult = db_query("SELECT snl.entity_id FROM {field_data_field_sequence_number_left} snl LEFT JOIN {field_data_field_book} b ON snl.entity_id = b.entity_id WHERE b.field_book_nid = :bnid AND snl.field_sequence_number_left_value < :snum ORDER BY snl.field_sequence_number_left_value DESC LIMIT 1", array( ':bnid' => $book_nid, ':snum' => $page_sequence_number) );
+
+  			  if ( $prevresult->rowCount() == 1 ) {
+  			    foreach ($prevresult as $row) {
+                $node->prevpage = theme('dlts_book_pager_button', array( 'url' => 'node/' . $row->entity_id, 'text' => t('Previous Page'), 'attributes' => array('title' => t('Previous Page'), 'class' => 'previous-page') ) );
+            }
+				  
+  			  } else {
+  				  $node->prevpage = theme('dlts_book_pager_button_inactive', array( 'text' => t('No Previous Page'), 'attributes' => array('title' => t('No Previous Page'), 'class' => 'previous-page-off') ) );
+  			  }
+			
+  			  #link to next page
+  			  $nextresult = db_query("SELECT snl.entity_id FROM {field_data_field_sequence_number_left} snl LEFT JOIN {field_data_field_book} b ON snl.entity_id = b.entity_id WHERE b.field_book_nid = :bnid AND snl.field_sequence_number_left_value > :snum ORDER BY snl.field_sequence_number_left_value ASC LIMIT 1", array( ':bnid' => $book_nid, ':snum' => $page_sequence_number) );
+
+  			  if ( $nextresult->rowCount() == 1 ) {
+  			    foreach ($nextresult as $row) {
+                $node->nextpage = theme('dlts_book_pager_button', array( 'url' => 'node/' . $row->entity_id, 'text' => t('Next Page'), 'attributes' => array('title' => t('Next Page'), 'class' => 'next-page') ) );
+            }
+				  
+  			  } else {
+  				  $node->nextpage = theme('dlts_book_pager_button_inactive', array( 'text' => t('No Next Page'), 'attributes' => array('title' => t('No Next Page'), 'class' => 'next-page-off') ) );
+  			  }
+			  
+  			  #link to last page
+  			  $lastresult = db_query("SELECT snl.entity_id FROM {field_data_field_sequence_number_left} snl LEFT JOIN {field_data_field_book} b ON snl.entity_id = b.entity_id WHERE b.field_book_nid = :bnid AND snl.field_sequence_number_left_value > :snum ORDER BY snl.field_sequence_number_left_value DESC LIMIT 1", array( ':bnid' => $book_nid, ':snum' => $page_sequence_number) );
+
+  			  if ( $lastresult->rowCount() == 1 ) {
+  			    foreach ($lastresult as $row) {
+
+              $node->lastpage = theme('dlts_book_pager_button', array( 'url' => 'node/' . $row->entity_id, 'text' => t('Last Page'), 'attributes' => array('title' => t('Last Page'), 'class' => 'last-page') ) );
+            }
+				  
+  			  } else {
+  				  $node->lastpage = theme('dlts_book_pager_button_inactive', array( 'text' => t('No Last Page'), 'attributes' => array('title' => t('No Last Page'), 'class' => 'last-page-off') ) );
+  			  }
+
+          #toggle to double page view link
+          #hand side values: 0 = Right; 1= Left
+        
+          $toggleresult = db_query("SELECT sn.entity_id FROM {field_data_field_sequence_number} sn LEFT JOIN {field_data_field_book} b ON sn.entity_id = b.entity_id WHERE b.field_book_nid = :bnid AND sn.field_sequence_number_value = :snum LIMIT 1", array( ':bnid' => $book_nid, ':snum' => $page_sequence_number) );
+      
+          if ( $toggleresult->rowCount() == 1 ) {
+            foreach ($toggleresult as $row) {
+
+  				      $node->togglepage = theme('dlts_book_pager_button', array( 'url' => 'node/' . $row->entity_id, 'text' => t('Single Page View'), 'attributes' => array('title' => t('Single Page View'), 'class' => 'single-page') ) );
+  				      #this is for the stitched page template that needs to know the nid of the corresponding single page for
+  				      #toggling to thumbnail view:
+  				      $node->left_page_nid = $row->entity_id;
+  				    }
+  			  } else {
+    				$node->lastpage = theme('dlts_book_pager_button_inactive', array( 'text' => t('No Single Page'), 'attributes' => array('title' => t('No Single Page'), 'class' => 'toggle-page-off') ) );
+    			}
+			  break;
+		  } //close switch $node-type
+    } //close foreach $nodes as $node
+  } // close if in_array dlts_book_page $types
+}   //close function dlts_book_pager_node_load
+
+
+function _build_pager_button($query_tmpl, $op, $order, $button_id)
+{
+  $query = str_replace(array('%OP%', '%ORDER%'),
+    array($op, $order), $query_tmpl);
+  $result = db_query($query);
+  if ($result->rowCount() == 1)
+  {
+    $record = $result->fetchObject();
+    return theme('dlts_book_pager_button', array( 
+      'id' => $button_id,
+      'url' => 'node/' . $record->entity_id, 
+      'active' => TRUE, ));
+  }
+}
+
+
+      $node->prevpage = theme('dlts_book_pager_button', array( 
+        'id' => 'previous-page',
+        'url' => 'node/' . $row->entity_id, 
+        'active' => TRUE, ));
+  }
+
+} else {
+  $node->prevpage = theme('dlts_book_pager_button', array( 
+    'id' => 'previous-page',
+    'url' => NULL,
+    'active' => FALSE, ));
+}
+

@@ -1,0 +1,10 @@
+K 10
+svn:ignore
+V 12
+compass.out
+
+K 13
+svn:mergeinfo
+V 53
+/drupal_themes/7/dlts_book/branches/2.0.1:13882-13912
+END

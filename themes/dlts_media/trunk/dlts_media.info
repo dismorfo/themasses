@@ -1,0 +1,15 @@
+name = DLTS Media  
+description = DLTS Media is a base theme for all DLTS publication sites. Sub themes include DLTS books, DLTS photos, and DLTS video.
+core = 7.x
+engine = phptemplate
+screenshot = screenshot.png
+version = 1.x 
+
+stylesheets[all][] = css/global.css
+
+;scripts[] = js/GGS.js     
+                                   
+
+
+
+

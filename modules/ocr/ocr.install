@@ -1,0 +1,154 @@
+<?php
+/**
+ * @file
+ * Install for a basic entity - need to create the base table for our entity.
+ * This table can have as many colums as you need to keep track of entity-specific
+ * data that will not be added via attached fields.
+ * The minimum information for the entity to work is an id and an entity name.
+ */
+
+/**
+ * Implements hook_schema()
+ */
+
+function ocr_enable() {
+  
+  print ( 'Populating database, this will take some time. Don\'t panic!' . "\n");
+
+  /**
+   * Load utilities
+   */
+  module_load_include('inc', 'dlts_utilities', 'inc/dlts_utilities.book_page');
+  
+  /**
+   * Query db for all the books
+   */
+  $results = db_query('SELECT nid, title, language FROM {node} WHERE type = :type', array(':type' => 'dlts_book'));
+  
+  // $result->rowCount();
+  
+  foreach ($results as $value) {
+    
+    /**
+     * Node ID
+     */
+    $nid = $value->nid;
+    
+    print ( 'Adding: ' . $value->title . ' nid: ' . $nid . '; url: ' . url("node/" . $nid, array("absolute" => TRUE) ) . "\n");
+    
+    /**
+     * Node language
+     */
+    $language = $value->language;
+  
+    /**
+     * For each book concatenate OCR text into $ocr_text
+     */
+    $ocr = '';
+  
+    /**
+     * Load book by nid
+     */
+    $book_node = node_load($value->nid);
+  
+    /**
+     * Get book identifier
+     */
+    $identifier = dlts_utilities_field_get_first_item('node', $book_node, 'field_identifier');
+  
+    /**
+     * Add book title to the OCR text
+     */
+    $ocr .= '<h1>' . $book_node->title . '</h1>';
+  
+    /**
+     * Get all book pages by the book identifier
+     */
+    $query_book_pages = new EntityFieldQuery();
+    $query_book_pages
+    ->entityCondition('entity_type', 'node', '=')
+    ->entityCondition('bundle', 'dlts_book_page')
+    ->propertyCondition('status', 1)
+    ->fieldCondition('field_is_part_of', 'value', $identifier['safe_value'], '=')
+    ->addMetaData('account', user_load(1));
+  
+    $result = $query_book_pages->execute();
+  
+    /**
+     * Test for results
+     */
+    if (isset($result['node'])) {
+  
+      /**
+       * Get the keys from the results array, each id represent a book page nid
+       */
+      $nids = array_keys($result['node']);
+  
+      /**
+       * Load book page
+       */
+      $book_pages = entity_load('node', $nids);
+  
+      foreach ($book_pages as $book_page) {
+  
+        /**
+         * Add book page title to the OCR text
+         */
+        $ocr .= '<h2>' . $book_page->title . '</h2>';
+  
+        /**
+         * Concatenate book pages into $ocr_text
+         */
+        $ocr_text = dlts_utilities_field_get_first_item('node', $book_page, 'field_ocr_text');
+  
+        if (!empty($ocr_text['safe_value'])) {
+  
+          /**
+           * OCR text
+           */
+          $ocr .= '<p>' . $ocr_text['safe_value'] . '</p>';
+  
+        }
+  
+      }
+  
+    }
+    
+    db_insert('ocr')
+      ->fields(
+        array(
+          'nid' => $nid, 
+          'language' => $language, 
+          'proceed' => TRUE, 
+          'value' => $ocr, 
+      )
+    )->execute();
+    
+    unset($ocr);
+    unset($ocr_text);
+  
+  }
+    
+}
+
+function ocr_schema() {
+  $schema['ocr'] = array(
+    'description' => 'Table for nodes OCR.',
+    'fields'      => array(
+      'nid'       => array('type' => 'serial', 'unsigned' => TRUE, 'not null' => TRUE),
+      'language'  => array('type' => 'varchar','length' => 12,'not null' => TRUE,'default' => ''),
+      'proceed'    => array('type' => 'int', 'not null' => TRUE, 'default' => 0),
+      'value'     => array('type' => 'text'),
+    ),
+    'primary key' => array('nid'),
+  );
+    
+  return $schema;
+}
+
+function ocr_uninstall() {
+  $result = db_query("SELECT * FROM {ocr}");
+  foreach ($result as $data) {
+    db_query("DELETE FROM {variable} WHERE name = :name", array(':name' => 'ocr_', $data->nid));
+  }
+}

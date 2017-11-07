@@ -1,0 +1,353 @@
+<?php
+
+
+/**
+ * Adds book utilities functionallities
+ */
+module_load_include('inc', 'dlts_utilities', 'inc/dlts_utilities.book');
+module_load_include('inc', 'dlts_utilities', 'inc/dlts_utilities.book_page');
+
+/**
+function dlts_dmd_multiplier_init() {
+  if (isset($_GET['dmd'])) {
+  	
+    // test
+    $menu_object = menu_get_object();
+	
+	// print_r($menu_object);	
+
+    // if this is not a node or is a node but not a dlts_book_page return
+    if (!isset($menu_object->type) || (isset($menu_object->type) && $menu_object->type != 'dlts_book_page')) return;
+
+    // else test pattern1
+    dlts_dmd_multiplier_rebuild_book_page_title_action(node_load($menu_object->nid), array('titlepattern' => 'pattern1',));
+  }
+}
+*/
+
+/**
+ * Implements hook_action_info().
+ *
+ *
+ * See hook_action_info().
+ */
+function dlts_dmd_multiplier_action_info() {
+  return array(
+    'dlts_dmd_multiplier_populate_book_dmd_action' => array(
+      'label' => t('DLTS: Populate DMD based on a chosen source node and fields.'),
+      'type' => 'node',
+      'configurable' => TRUE,
+      'triggers' => array('any'),
+    ),
+    'dlts_dmd_multiplier_rebuild_book_page_title_action' => array(
+      'label' => t('DLTS: Rebuild titles for Book Pages based on a chosen fields from the parent book.'),
+      'type' => 'node',
+      'configurable' => TRUE,
+      'triggers' => array('any'),
+    ),
+    
+  );
+}
+
+/**
+ * Implements hook_menu().
+ *
+ * Simply provide a menu entry which explains what the module does.
+ */
+function dlts_dmd_multiplier_menu() {
+  $items['admin/config/system/dlts_dmd_multiplier'] = array(
+    'title' => 'DLTS DMD Updater',
+    'description' => 'Provides a basic information page.',
+    'page callback' => '_dlts_dmd_multiplier_page',
+    'access callback' => TRUE,
+  );
+  return $items;
+}
+
+
+/**
+ * A simple page to explain to the developer what to do.
+ */
+function _dlts_dmd_multiplier_page() {
+  return t("Suite of actions for batch populating DMD for nodes in the dlts_books domain. Actions can be configured on <a href='@actions_url'>Actions configuration page</a>", array('@actions_url' => url('admin/config/system/actions')));
+}
+
+
+// ---------------------------------------------------------------------------
+/*
+ * Action 1. 
+ *
+ * Allows user to select a source node and source fields, and automatically
+ * populate DMD for dlts_book nodes selected in views.
+ *
+ */
+
+
+/**
+ * Generates settings form for dlts_dmd_multiplier_populate_book_dmd_action().
+ *
+ * @param array $context
+ *   An array of options of this action (in case it is being edited)
+ *
+ * @return array $form
+ *
+ */
+function dlts_dmd_multiplier_populate_book_dmd_action_form($context) {
+  /**
+   * We return a configuration form to set the requirements that will
+   * match this action before being executed. This is a regular Drupal form and
+   * may include any type of information you want, but all the fields of the
+   * form will be saved into the $context variable.
+   *
+   */
+  
+  /* Build an options array of all the book nodes */
+  $book_options = array();
+  
+  $query =
+   "SELECT n.nid, n.title 
+      FROM {node} n
+      WHERE n.type = :type";
+  
+  $result = db_query($query, array(':type' => 'dlts_book'));
+  
+  foreach ($result as $record) {
+    $book_options[$record->nid] = $record->title;
+  }  
+  
+  $book_fields = _dlts_dmd_multiplier_remove_untouchable_fields( field_info_instances('node', 'dlts_book') );
+
+  $form['book_dmd']['source_node'] = array(
+    '#title' => t('Source Node'),
+    '#type' => 'select',
+    '#description' => t('The node that the metadata will be copied from.'),
+    '#options' => $book_options,
+    '#default_value' => $context['source_node'],
+  );  
+  
+  $book_fields_options = array();
+  
+  foreach ($book_fields as $bf) {
+    $book_fields_options[$bf['field_name']] = $bf['label'];
+  }
+  
+  $form['book_dmd']['source_fields'] = array(
+    '#title' => t('Which Fields'),
+    '#type' => 'checkboxes',
+    '#description' => 'Select which fields to copy from the source node to the target nodes',
+    '#options' => $book_fields_options,
+    '#default_value' => $context['source_fields'],
+  );
+  
+  return $form;
+}
+
+/**
+ * Validates settings form for dlts_dmd_multiplier_populate_book_dmd_action().
+ * Verifies that 1 == 1 before continuing
+ */
+function dlts_dmd_multiplier_populate_book_dmd_action_validate($form, $form_state) {
+  if (! 1 == 1) {
+    form_set_error('book_dmd', t('Error'));
+  }
+}
+
+/**
+ * Submit handler for dlts_dmd_multiplier_populate_book_dmd_action().
+ *
+ * Returns an associative array of values which will be available in the
+ * $context when an action is executed.
+ */
+function dlts_dmd_multiplier_populate_book_dmd_action_submit($form, $form_state) {
+  return array('source_node' => $form_state['values']['source_node'], 'source_fields' => $form_state['values']['source_fields']);
+}
+
+/**
+ * Get the user-defined source node and source fields values, and
+ * use them to copy metadata from source node X to target nodes [n]
+ *
+ * @param $node
+ *   A node object provided by the associated trigger.
+ * @param $context
+ *   Array with the following elements:
+ *   - 'author': username of the author's content this function will promote and
+ *     set as sticky.
+ *
+ * @ingroup actions
+ */
+function dlts_dmd_multiplier_populate_book_dmd_action($target_node, $context) {
+
+  if ( !(isset($context['source_node'])) ) {
+    drupal_set_message(t('Could not identify the source node for this action'), 'error', FALSE);
+    exit;
+  }
+  
+  $source_node = node_load($context['source_node']);
+  $source_fields = $context['source_fields'];
+  
+  foreach($source_fields as $key => $val) {
+    if ($val == '0'){
+      continue;
+    }
+    $source_field_key = $val;
+    /* Not sure if this is the best way to copy the value:*/
+    $target_node->{$source_field_key} = $source_node->{$source_field_key};
+    if (function_exists('dsm')) {
+      #dsm($target_node);
+    }
+    node_save($target_node);
+  }
+}
+
+/*
+ * Action 2:
+ * Construct the title for dlts_book_page nodes based on fields from the parent dlts_book and from the node itself.
+ */
+function dlts_dmd_multiplier_rebuild_book_page_title_action_form($context) {
+  /*
+  * We return a configuration form to set the requirements that will
+  * match this action before being executed. This is a regular Drupal form and
+  * may include any type of information you want, but all the fields of the
+  * form will be saved into the $context variable.
+  *
+  */
+
+  //$book_fields = field_info_instances('node', 'dlts_book');
+  //$book_page_fields = field_info_instances('node', 'dlts_book_page');
+  //dlts_utilities_collection_title()
+
+  //$section_options = array_merge($book_fields, $book_page_fields);
+  $titlepattern_options = _dlts_dmd_multiplier_get_titlepattern_options();
+
+
+  $form['book_page_title']['titlepattern'] = array(
+    '#title' => t('Title Pattern'),
+    '#type' => 'select',
+    '#description' => t('Select the pattern to use for building new titles for the book pages.'),
+    '#options' => $titlepattern_options,
+    '#default_value' => $context['titlepattern'],
+  );
+
+  // No more options, return the form.
+  return $form;
+}
+
+/**
+ * Validates settings form for dlts_dmd_multiplier_rebuild_book_page_title_action().
+ * Verifies that 1 == 1 before continuing
+ */
+function dlts_dmd_multiplier_rebuild_book_page_title_action_validate($form, $form_state) {
+  if (! 1 == 1) {
+    form_set_error('book_page_title', t('Error'));
+  }
+}
+
+/**
+ * Submit handler for dlts_dmd_multiplier_rebuild_book_page_title_action().
+ *
+ * Returns an associative array of values which will be available in the
+ * $context when an action is executed.
+ */
+function dlts_dmd_multiplier_rebuild_book_page_title_action_submit($form, $form_state) {
+  return array('titlepattern' => $form_state['values']['titlepattern']);
+}
+
+
+/**
+ * Get the user-defined source node and source fields values, and
+ * use them to copy metadata from source node X to target nodes [n]
+ *
+ * @param $node
+ *   A node object provided by the associated trigger.
+ * @param $context
+ *   Array with the following elements:
+ *   - 'author': username of the author's content this function will promote and
+ *     set as sticky.
+ *
+ * @ingroup actions
+ */
+function dlts_dmd_multiplier_rebuild_book_page_title_action($book_page_node, $context) {
+
+  if ( !(isset($context['titlepattern'])) ) {
+    drupal_set_message(t('Could not identify the title: title pattern for this action.'), 'error', FALSE);
+    exit;
+  }
+
+  $book_node = dlts_utilities_book_page_load_book($book_page_node);
+  
+  switch ( $context['titlepattern'] ) {
+
+    case 'pattern1' :
+
+      $description = t('Unknown');
+
+      $pageno = dlts_utilities_book_page_get_real_number($book_page_node);
+
+      if (isset($pageno)) {
+        $page_label = t('Page') . ' ';
+      }
+
+      else {
+        $pageno = dlts_utilities_book_page_get_sequence_number($book_page_node);
+        $page_label = t('Page Image ') . ' ';
+      }
+
+      $pattern = '/\(.*\) {1}(.+) {1}/';
+
+      preg_match($pattern, $book_page_node->title, $matches);
+	  
+      if (isset($matches[1])) {
+        $page_label = $matches[1];
+      }
+
+      $new_title = dlts_utilities_collection_title() . ' ' . dlts_utilities_book_get_description($book_node) . ' '  . $page_label  . ' '. $pageno;      
+
+	  preg_match('/nos\./', $book_page_node->title, $matches);
+	  
+      if (isset($matches[0])) {
+		$book_page_node->title = str_replace('nos.', 'Nos.', $book_page_node->title);
+      }
+	  
+      // $book_page_node->title = trim($new_title);
+	  drupal_set_message($book_page_node->title);
+	  
+      node_save($book_page_node);
+
+      break;
+
+    default :
+      drupal_set_message(t('No pattern identified'), 'error', FALSE);
+      break;
+  }
+
+}
+
+/* 
+ * Private Utilities
+ */
+
+/* 
+ * This is a filter to ensure that certain fields do not get overwritten.
+ * It would be better to have the fields indicate themeselves whether or not
+ * they can be updated this way.
+ */
+function _dlts_dmd_multiplier_remove_untouchable_fields( $fields ) {
+  if (isset( $fields['field_identifier'] ) ){
+    unset($fields['field_identifier']);
+  }
+  if (isset( $fields['field_handle']) ) {
+    unset($fields['field_handle']);
+  }
+  if (isset( $fields['field_sequence_count']) ) {
+    unset($fields['field_sequence_count']);
+  }
+  if (isset( $fields['field_representative_image']) ) {
+    unset($fields['field_representative_image']);
+  }
+  return $fields;
+}
+
+
+function _dlts_dmd_multiplier_get_titlepattern_options() {
+  return array( 'pattern1' => 'Collection Title + Book:Description + Page: Number');
+}

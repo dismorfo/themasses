@@ -1,0 +1,174 @@
+<?php
+
+/*
+ * Implementation of hook_menu
+ * http://api.drupal.org/api/drupal/developer--hooks--core.php/function/hook_menu/6
+ */
+function dlts_site_metadata_menu() {
+  return array(
+    'services/metadata/all' => array(
+      'title' => 'Site metadata',
+      'description' => 'Returns available site metadata',
+      'access arguments' => array('access dlts site metadata'),
+      'page callback' => '_dlts_site_dlts_site_metadata',
+      'delivery callback' => 'dlts_utilities_deliver_json',
+      'type' => MENU_CALLBACK,
+    ),
+    'services/metadata/collection-id' => array(
+      'title' => 'Collection id',
+      'description' => 'Returns collection id',
+      'access callback' => '_dlts_site_dlts_site_metadata_access',
+      'page callback' => 'dlts_utilities_collection',
+      'delivery callback' => 'dlts_utilities_deliver_json',
+      'type' => MENU_CALLBACK,
+    ),
+    'services/metadata/partner-name' => array(
+      'title' => 'Partner name',
+      'description' => 'Returns partner name',
+      'access callback' => '_dlts_site_dlts_site_metadata_access',
+      'page callback' => 'dlts_utilities_repository_name',
+      'delivery callback' => 'dlts_utilities_deliver_json',
+      'type' => MENU_CALLBACK,
+    ),
+    'services/metadata/partner-code' => array(
+      'title' => 'Repository code',
+      'description' => 'Returns partner code',
+      'access callback' => '_dlts_site_dlts_site_metadata_access',
+      'page callback' => 'dlts_utilities_repository_code',
+      'delivery callback' => 'dlts_utilities_deliver_json',
+      'type' => MENU_CALLBACK,
+    ),
+    'services/metadata/collection-abstract' => array(
+      'title' => 'Collection abstract',
+      'description' => 'Returns collection abstract',
+      'access callback' => '_dlts_site_dlts_site_metadata_access',
+      'page callback' => 'dlts_utilities_collection_abstract',
+      'delivery callback' => 'dlts_utilities_deliver_json',
+      'type' => MENU_CALLBACK,
+    ),
+    'services/metadata/collection-creator' => array(
+      'title' => 'Collection creator',
+      'description' => 'Returns collection creator',
+      'access callback' => '_dlts_site_dlts_site_metadata_access',
+      'page callback' => 'dlts_utilities_collection_creator',
+      'delivery callback' => 'dlts_utilities_deliver_json',
+      'type' => MENU_CALLBACK,
+    ),
+    'services/metadata/collection-code' => array(
+      'title' => 'Collection code',
+      'description' => 'Returns collection code',
+      'access callback' => '_dlts_site_dlts_site_metadata_access',
+      'page callback' => 'dlts_utilities_collection_code',
+      'delivery callback' => 'dlts_utilities_deliver_json',
+      'type' => MENU_CALLBACK,
+    ),
+    'services/metadata/collection-title' => array(
+      'title' => 'Collection title',
+      'description' => 'Returns collection title',
+      'access callback' => '_dlts_site_dlts_site_metadata_access',
+      'page callback' => 'dlts_utilities_collection_title',
+      'delivery callback' => 'dlts_utilities_deliver_json',
+      'type' => MENU_CALLBACK,
+    ),
+    'services/metadata/collection-call-number' => array(
+      'title' => 'Collection call-number',
+      'description' => 'Returns collection call number',
+      'access callback' => '_dlts_site_dlts_site_metadata_access',
+      'page callback' => 'dlts_utilities_collection_call_number',
+      'delivery callback' => 'dlts_utilities_deliver_json',
+      'type' => MENU_CALLBACK,
+    ),
+    'services/metadata/collection-type' => array(
+      'title' => 'Collection type',
+      'description' => 'Returns collection type',
+      'access callback' => '_dlts_site_dlts_site_metadata_access',
+      'page callback' => 'dlts_utilities_collection_type',
+      'delivery callback' => 'dlts_utilities_deliver_json',
+      'type' => MENU_CALLBACK,
+    ),
+  );
+}
+
+/*
+ * Implementation of hook_permission
+ * http://api.drupal.org/api/drupal/modules--system--system.api.php/function/hook_permission/7
+ */
+function dlts_site_metadata_permission() {
+  return array(
+    'access dlts site metadata' => array(
+      'title' => t('Access Site Metadata'), 
+      'description' => t('Allow clients to access site metadata.'),
+    ),
+    'access dlts site metadata bypass' => array(
+      'title' => t('Bypass Permission for Site Metadata'), 
+      'description' => t('Allow clients to bypass access permission for site metadata.'),
+    ),    
+    'access dlts site metadata collection_id' => array(
+      'title' => t('Access Site Metadata: Collection id'), 
+      'description' => t('Allow clients to access site metadata.'),
+    ),
+    'access dlts site metadata partner_name' => array(
+      'title' => t('Access Site Metadata: Partner name'), 
+      'description' => t('Allow clients to access site metadata.'),
+    ),
+    'access dlts site metadata partner_code' => array(
+      'title' => t('Access Site Metadata: Partner code'), 
+      'description' => t('Allow clients to access site metadata.'),
+    ),
+    'access dlts site metadata collection_abstract' => array(
+      'title' => t('Access Site Metadata: Collection abstract'), 
+      'description' => t('Allow clients to access site metadata.'),
+    ),
+    'access dlts site metadata collection_creator' => array(
+      'title' => t('Access Site Metadata: Collection creator'), 
+      'description' => t('Allow clients to access site metadata.'),
+    ),
+    'access dlts site metadata collection_code' => array(
+      'title' => t('Access Site Metadata: Collection code'), 
+      'description' => t('Allow clients to access site metadata.'),
+    ),
+    'access dlts site metadata collection_title' => array(
+      'title' => t('Access Site Metadata: Collection title'), 
+      'description' => t('Allow clients to access site metadata.'),
+    ), 
+    'access dlts site metadata collection_call_number' => array(
+      'title' => t('Access Site Metadata: Collection call number'), 
+      'description' => t('Allow clients to access site metadata.'),
+    ), 
+    'access dlts site metadata collection_type' => array(
+      'title' => t('Access Site Metadata: Collection type'), 
+      'description' => t('Allow clients to access site metadata.'),
+    ), 
+  );
+}
+
+/**
+ * Access callback for site metadata pages.
+ */
+function _dlts_site_dlts_site_metadata_access() {
+  if ( user_access('access dlts site metadata bypass') ) {
+    return TRUE;
+  }
+  
+  $access = preg_replace('/-/', '_', arg(2), -1 , $count );
+  if ( $count > 0 ) {
+    return user_access('access dlts site metadata ' . $access);
+  }
+  else {
+    return FALSE;
+  }
+}
+
+function _dlts_site_dlts_site_metadata() {
+  $metadata = dlts_utilities_site_metadata();  
+  if ( user_access('access dlts site metadata bypass')) {
+    return $metadata;
+  }  
+  $response = array();  
+  foreach($metadata as $key => $value ) {
+    if ( user_access('access dlts site metadata ' . $key) ) {
+      $response[$key] = $value;
+    }
+  }
+  return $response;
+}

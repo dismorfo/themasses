@@ -1,0 +1,25 @@
+name = DLTS Book -- The Masses
+description = The Masses
+core = 7.x
+engine = phptemplate
+version = 2.x
+screenshot = screenshot.png
+base theme = dlts_book
+
+stylesheets[all][] = css/themasses.css
+
+regions[header] = Header
+regions[alert] = Alert
+regions[search] = Search
+regions[content] = Content
+regions[footer] = Footer
+regions[left] = Left Sidebar
+regions[right] = Right Sidebar
+
+features[] = logo
+features[] = name
+features[] = search
+features[] = favicon
+
+settings[dlts_book_toggle_breadcrumb] = '0'
+settings[dlts_book_toggle_page_tabs] = '0'

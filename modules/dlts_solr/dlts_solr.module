@@ -1,0 +1,1284 @@
+<?php
+
+/**
+ * @file
+ * DLTS Integration with the Apache Solr module.
+ */
+
+/*
+ * Implementation of hook_menu
+ * http://api.drupal.org/api/drupal/developer--hooks--core.php/function/hook_menu/7
+ */
+
+/**
+ * Maps bundle machine names to their human friendly label.
+ *
+ * @param array $values
+ *   An array of indexed values being mapped.
+ * @param array $options
+ *   An associative array of map options containing:
+ *   - entities: An array of entities that $values are bundles for.
+ *
+ * @return array
+ *   An array mapping the indexed values to human readable values.
+ */
+function dlts_solr_map_collection_metadata(array $values, array $options) {
+  if ( empty($options['entities']) ) {
+    $options['entities'] = array('node');
+  }
+  foreach ($options['entities'] as $entity_type) {
+    if ($info = entity_get_info($entity_type)) {
+      foreach ($info['bundles'] as $bundle_name => $bundle_info) {
+        $names[$bundle_name] = $bundle_info['label'];
+      }
+    }
+  }
+  return array_intersect_key($names, array_flip($values));
+}
+
+/**
+ * Helper function returning common facet definitions.
+ */
+function dlts_solr_common_node_facets() {
+  
+  $facets = array();
+  
+  $facets['collection_type'] = array(
+      'label' => t('Object Type'),
+      'description' => t('Filter by object type.'),
+      'field api bundles' => array('node'),
+      'map callback' => 'dlts_solr_map_collection_metadata',
+      'values callback' => 'facetapi_callback_type_values',
+      'facet mincount allowed' => TRUE,
+      'dependency plugins' => array('role'),
+  );   
+
+  $facets['collection_title'] = array(
+      'label' => t('Collection Title'),
+      'description' => t('Filter by collection title.'),
+      'field api bundles' => array('node'),
+      'map callback' => 'dlts_solr_map_collection_metadata',
+      'values callback' => 'facetapi_callback_type_values',
+      'facet mincount allowed' => TRUE,
+      'dependency plugins' => array('role'),
+  );
+  
+  $facets['collection_id'] = array(
+      'label' => t('Collection Identifier'),
+      'description' => t('Filter by Identifier'),
+      'field api bundles' => array('node'),
+      'map callback' => 'dlts_solr_map_collection_metadata',
+      'values callback' => 'facetapi_callback_type_values',
+      'facet mincount allowed' => TRUE,
+      'dependency plugins' => array('role'),
+  );
+  
+  $facets['repository_name'] = array(
+    'label' => t('Repository name'),
+    'description' => t('Filter by repository name'),
+    'field api bundles' => array('node'),
+    'map callback' => 'dlts_solr_map_collection_metadata',
+    'values callback' => 'facetapi_callback_type_values',
+    'facet mincount allowed' => TRUE,
+    'dependency plugins' => array('role'),
+  );
+  return $facets;
+}
+
+/**
+ * Implements hook_facetapi_facet_info().
+ * Currently it only supports the node entity type
+ */
+/**
+ * Implements hook_facetapi_facet_info().
+ * Currently it only supports the node entity type
+ */
+function dlts_solr_facetapi_facet_info($searcher_info) {
+
+  $facets = array();
+
+  if ('apachesolr' == $searcher_info['adapter']) {
+    $environment = apachesolr_environment_load($searcher_info['instance']);
+
+    if (!empty($environment['conf']['facet callbacks'])) {
+      foreach ($environment['conf']['facet callbacks'] as $callback) {
+        if (is_callable($callback)) {
+          $facets = array_merge($facets, call_user_func($callback, $searcher_info));
+        }
+      }
+    }
+    elseif (isset($searcher_info['types']['node'])) {
+      $facets = dlts_solr_common_node_facets();
+    }
+  }
+
+  return $facets;
+}
+
+function dlts_solr_menu() {
+  return array(
+  
+    'books/%/search' => array(
+      'title'              => 'Search',
+      'load arguments'     => array('%map', '%index'),
+      'page callback'      => 'dlts_solr_apachesolr_search_book_filter_identifier_page',
+      'page arguments'     => array(1),
+      'access arguments'   => array('search content'),
+      'type'               => MENU_LOCAL_TASK,
+      'weight'             => 70,
+    ),
+    
+    'books/%/services/search' => array(
+      'title'              => 'Search books',
+      'load arguments'     => array('%map', '%index'),
+      'page callback'      => 'dlts_solr_apachesolr_search_book_filter_identifier_page_json',
+      'page arguments'     => array(1),
+      'delivery callback' => 'dlts_utilities_deliver_json',
+      'access arguments'   => array('search content'),
+      'type'               => MENU_CALLBACK,
+    ),    
+    
+    'admin/config/search/apachesolr/dlts' => array(
+      'title'              => 'DLTS Sites',
+      'description'        => 'DLTS Sites',
+      'page callback'      => 'drupal_get_form',
+      'page arguments'     => array('dlts_solr_search_settings'),
+      'access arguments'   => array('administer dlts utilities'),
+      'type'               => MENU_LOCAL_TASK,
+      'weight'             => 50,
+      'file' => 'inc/dlts_solr.admin.inc',
+    ),
+    
+  );  
+}
+
+/**
+ * Implements hook_facetapi_widgets().
+ */
+function dlts_solr_facetapi_widgets() {
+  return array(
+    'dlts_solr_widget' => array(
+      'handler' => array(
+        'label' => t('DLTS Solr Widget'),
+        'class' => 'DLTSSolrWidget',
+      ),
+    ),
+  );
+}
+
+/**
+ * Allows a module to modify the delete query. Only delete this site nodes from index
+ * 
+ * @param string $query
+ *   Defaults to *:*
+ */
+function dlts_solr_apachesolr_delete_index_alter($query) {
+  $query = 'hash:' . apachesolr_site_hash();
+}
+
+/**
+ * Alter the query after it's prepared and cached.
+ * @param $query
+ * An object implementing DrupalSolrQueryInterface. No need for &.
+ */
+function dlts_solr_apachesolr_query_alter($query) {
+
+  // Ommit query alter
+  $ommit = $query->getParam('omitAlter');
+  
+  /** ask for our fl */  
+  if (!in_array('fl', $ommit)) {
+    $query->addParam('fl', '
+      base_url,
+      nyu_collectionId,
+      site,
+      title,
+      bundle,
+      type,
+      ss_identifer,
+      ss_representative_image,
+      collection_id,
+      collection_creator,
+      collection_code,
+      collection_title,
+      collection_type,
+      repository_name,
+      repository_code,
+      xs_services_image
+    ');
+  }
+  
+  /*
+   * Search only this collection?
+   */
+  $multisite = variable_get('dlts_solr_search_multisite', 0);  
+
+  if (!$multisite) {
+    $query->addFilter('collection_id', dlts_utilities_collection());
+  }
+
+  /*
+   * D7 default requestHandler
+   */
+  $query->addParam('qt', 'drupal');
+
+  /*
+   * D7 field for the QueryParser to use when an explicit fieldname is absent
+   */
+  $query->addParam('df', 'content');
+
+  /* default operator for query expressions */
+  // $query->addParam('q.op', 'OR');
+  
+}
+
+
+/**
+ * The is invoked by apachesolr_search.module for each document returned in a
+ * search. This has been introduced in 6.x-beta7 as a replacement for the call
+ * to HOOK_nodeapi().
+ *
+ * @param object $document
+ *   The ApacheSolrDocument instance.
+ * @param array $extra
+ * @param array $query
+ */
+function dlts_solr_apachesolr_search_result_alter($document, &$extra, DrupalSolrQueryInterface $query) {
+  if (isset($document->ss_representative_image)) {
+
+    $variables = array(
+      'path' => $document->ss_representative_image, 
+      'alt' => '',
+      'title' => '',
+      'height' => '85',
+      'attributes' => array('class' => 'image representative'),
+    );
+    $document->representative_image = theme('image', $variables);
+  }
+
+  /*
+   * Set site url
+   */
+  if ( isset($document->base_url)) {
+    $document->site = $document->base_url;
+  }
+
+  /*
+   * Set collection id
+   */
+  $document->collection = dlts_utilities_collection();
+
+  /*
+   * Drupal 6 stored label as title.
+   */
+  if ( !isset($document->label) && isset($document->title) ) {
+    $document->label = $document->title;
+  }
+}
+
+/**
+ * Build the documents before sending them to Solr.
+ * The function is the follow-up for apachesolr_update_index
+ *
+ * @param integer $document_id
+ * @param array $entity
+ * @param string $entity_type
+ */
+function dlts_solr_apachesolr_index_document_build(ApacheSolrDocument $document, $entity, $entity_type, $env_id) {
+
+  // Wrap node with Entity API
+  $ewrapper = entity_metadata_wrapper('node', $entity);
+    
+  $document->addField('base_url', dlts_utilities_base_url());
+
+  /*
+   * Get site-specific metadata
+  */
+  $site_metadata = dlts_utilities_site_metadata();
+  
+  /*
+   * If available site-specific metadata add key/value to the document.
+  */
+  if (!empty($site_metadata)) {
+    foreach($site_metadata as $key => $value) {
+      $value = strip_tags($value);
+      if ($key == 'collection_type' || $key == 'collection_id' || $key == 'collection_creator'  || $key == 'partner_name'  ) {
+        $document->addField('ts_' . $key, $value);
+      }
+      $document->addField($key, $value);
+    }
+  }
+  
+  switch ($entity->type) {
+  
+    case 'dlts_book_page':
+      /*
+       * Add book pages utilities functions
+       */
+      module_load_include('inc', 'dlts_utilities', 'inc/dlts_utilities.book_page');
+  
+      $ocr = dlts_utilities_book_page_get_ocr($entity);
+      
+      $services_image = dlts_utilities_book_page_get_services_image($entity);
+      
+      if ($services_image) {
+        $services_image_base64_dataURI = dlts_solr_imagedataURI($services_image);
+        $document->addField('xs_services_image', $services_image_base64_dataURI);
+      }
+      
+      /**
+       * Add OCR text to index
+       */
+      if (!empty($ocr)) {
+
+        $document->addField('ts_ocr', $ocr );
+
+        $content = $document->content . ' ' . $ocr;
+
+        unset($document->content);
+
+        $document->addField('content', $content);
+
+      }
+  
+      /* add book identifier to the document. */
+      $identifier = dlts_utilities_book_page_get_identifier($entity);
+  
+      if (!empty($identifier)) {
+        $document->addField('ss_identifer', $identifier);
+      }
+      break;
+	  
+	case 'dlts_series':
+		
+      $series_data = array () ;
+		
+	  $series_data['collections'] = array () ;
+		
+	  $series_data['books'] = array () ;
+		
+      /** add series utilities functions */
+      module_load_include('inc', 'dlts_utilities', 'inc/dlts_utilities.series');
+		
+	  /** find the nids of all the books that belong to this series */
+	  $books_nids = dlts_utilities_series_books_nids ( $entity ) ;
+		
+	  if ( $books_nids ) {
+
+			/** load the series book */
+		  $series_books = node_load_multiple ( $books_nids ) ;
+		  
+		  foreach ( $series_books as $series_book ) {
+		  		
+		  	// Wrap it with Entity API
+            $series_book_wrapper = entity_metadata_wrapper('node', $series_book);
+			
+			$collections = $series_book_wrapper->field_collection->value();
+			
+			foreach ( $collections as $collection ) {
+				
+			  $collection_wrapper = entity_metadata_wrapper('node', $collection);
+				
+			  $collection_label = $collection_wrapper->field_name->value();
+			  
+			  $collection_identifier = $collection_wrapper->field_identifier->value();
+			  
+			  $collection_code = $collection_wrapper->field_code->value();
+			  
+			  if ( ! isset ( $series_data['collections'][$collection_identifier] ) ) {
+	            $series_data['collections'][$collection_identifier] = array (
+			      'label' => $collection_label,
+			      'identifier' => $collection_identifier,
+			      'code' => $collection_code,
+  			    );
+			  }
+				
+			}
+			
+			$book = $series_book_wrapper->field_book->value();
+			
+			if ( $book ) {
+			
+			  $book_wrapper = entity_metadata_wrapper('node', $book);
+			
+			  $volume = $series_book_wrapper->field_volume_number->value();
+			
+			  $book_identifier = $book_wrapper->field_identifier->value() ;
+			
+			  $book_representative_image = $book_wrapper->field_representative_image->value() ;
+			
+			  $book_label = $book_wrapper->field_title->value() ;
+			  
+			  if ( ! isset ( $series_data['books'][$book_identifier] ) ) {
+
+	 		    $series_data['books'][$book_identifier] = array () ;
+				  
+				$series_data['books'][$book_identifier]['identifier'] = $book_identifier;
+				
+				$series_data['books'][$book_identifier]['label'] = $book_label;
+			  	
+                $partners = dlts_utilities_book_get_partner($book);
+      
+                $authors = dlts_utilities_book_get_authors($book);
+
+                $creators = dlts_utilities_book_get_creator($book);
+
+                $contributors = dlts_utilities_book_get_contributor($book);
+      
+                $publishers = dlts_utilities_book_get_publisher($book);      
+      
+                $editors = dlts_utilities_book_get_editor($book);   
+      
+                $publication_location = dlts_utilities_book_get_publication_location($book);      
+      
+                $publication_date = dlts_utilities_book_get_field_publication_date_text($book);
+      
+                $subjects_list = dlts_utilities_book_get_subjects($book);
+
+                if ( $multivol = dlts_utilities_book_get_multivol_book( $book ) ) {
+                  if ( $volume = dlts_utilities_multibook_get_volume( $multivol ) ) {
+                    $book_field_title = t('@title Vol. @volume', array( '@title' => $book_field_title, '@volume' => $volume ) );
+                  }
+                }
+	           
+	            if ( $series = dlts_utilities_book_get_series_book( $book ) ) {
+                  if ( $series_volume = dlts_utilities_series_get_volume ( $series ) ) {
+                    $book_series_title = t('@title ser. @volume', array( '@title' => $book_field_title, '@volume' => $series_volume ) );
+                  }
+	            }
+				
+				$series_data['books'][$book_identifier]['partners'] = array();
+				foreach ( $partners as $partner )  {
+				  $series_data['books'][$book_identifier]['partners'][] = array ( 'value' => $partner);
+				}
+				
+				$series_data['books'][$book_identifier]['authors'] = array();
+				foreach ( $authors as $author )  {
+				  $series_data['books'][$book_identifier]['authors'][] = array ( 'value' => $author);
+				}
+				
+				$series_data['books'][$book_identifier]['contributors'] = array();
+				foreach ( $contributors as $contributor )  {
+				  $series_data['books'][$book_identifier]['contributors'][] = array ( 'value' => $contributor);
+				}
+
+                $series_data['books'][$book_identifier]['creators'] = array();
+				foreach ( $creators as $creator )  {
+				  $series_data['books'][$book_identifier]['creators'][] = array ( 'value' => $creator);
+				}
+
+                $series_data['books'][$book_identifier]['publishers'] = array();
+				foreach ( $publishers as $publisher )  {
+				  $series_data['books'][$book_identifier]['publishers'][] = array ( 'value' => $publisher);
+				}
+
+                $series_data['books'][$book_identifier]['editors'] = array();
+				foreach ( $editors as $editor )  {
+				  $series_data['books'][$book_identifier]['editors'][] = array ( 'value' => $editor);
+				}
+				
+				$series_data['books'][$book_identifier]['subjects'] = array();
+				foreach ( $subjects_list as $subject )  {
+				  $series_data['books'][$book_identifier]['subjects'] = array ( 'tid' => $subject->tid, 'label' => $subject->name ) ;
+				}
+				
+				$series_data['books'][$book_identifier]['publication_location'] = $publication_location ;
+				
+				$series_data['books'][$book_identifier]['publication_date'] = $publication_date ;				
+				
+			    if ( $book_representative_image ) {
+			      $series_data['books'][$book_identifier]['representative_image_medium'] = image_style_url('medium', $book_representative_image['uri']) ;
+				  $series_data['books'][$book_identifier]['representative_image_thumbnail'] = image_style_url('thumbnail', $book_representative_image['uri']) ;
+			    }
+			  
+			  }
+			  
+			}
+
+		  }
+
+		}
+
+      $series_wrapper = entity_metadata_wrapper('node', $entity);
+
+      $document->addField('ss_series_label', $entity->title ) ;
+	   
+	  $series_identifier = $series_wrapper->field_identifier->value() ;
+	   
+	  $series_representative_image = $series_wrapper->field_representative_image->value() ;
+
+	  if  ( $series_representative_image ) {
+  	    $styles = array_keys ( image_styles() ) ;
+	    foreach ( $styles as $style ) {
+          $document->addField('zs_image_' . $style , image_style_url( $style, $series_representative_image['uri'] ) ) ;	   
+	    }
+	  }
+	   
+	  $document->addField('ss_identifier', $series_identifier ) ;
+	   
+      foreach ( $series_data['collections'] as $collection ) {
+         $document->addField('sm_series_collection_identifier', $collection['identifier']) ;
+	     $document->addField('sm_series_code', $collection['code']) ;
+	  }
+	   
+	   $document->addField('zs_data', json_encode( $series_data )) ;
+		
+      break;
+  
+    case 'dlts_book' :
+    
+      module_load_include('inc', 'dlts_solr', 'inc/dlts_solr.dlts_book');
+      
+      dlts_solr_index_book ( $document, $entity, $entity_type, $env_id ) ;
+    
+      break;
+      
+    case 'dlts_photograph':
+      
+      module_load_include('inc', 'dlts_utilities', 'inc/dlts_utilities.photograph');
+      
+      $services_image = dlts_utilities_photograph_get_services_image_path($entity);
+      
+      if ($services_image) {
+         if (isset($services_image['path'])) {
+           $document->addField('xs_services_image', dlts_solr_imagedataURI($services_image['path']));
+         }
+         if (isset($services_image['url'])) {
+           $document->addField('ss_representative_image', $services_image['url']);
+         }
+      }
+      
+      break;
+  
+    case 'dlts_interview':
+    case 'rosie_interview':
+    case 'beard_interview':
+
+      if (isset($entity->field_rosie_representative_image) && !empty($entity->field_rosie_representative_image)) {
+        $field_representative_image = dlts_utilities_field_get_first_item($entity_type, $entity, 'field_rosie_representative_image');
+        $document->addField('ss_representative_image', file_create_url($field_representative_image['uri']));
+      }
+      
+      else {
+        if (isset($entity->field_beard_representative_image) && !empty($entity->field_beard_representative_image)) {
+          $field_representative_image = dlts_utilities_field_get_first_item($entity_type, $entity, 'field_beard_representative_image' );
+          $document->addField('ss_representative_image', file_create_url($field_representative_image['uri']));
+        }
+      }
+      
+      $handle = $ewrapper->field_handle->value();
+      
+      if ($handle) {
+        $document->addField('ss_handle', $handle['url']);
+      }
+
+      break;
+  
+  }   
+}
+
+/**
+ * Form validation
+ *
+ * Now we add a handler/function to validate the data If not, it displays an error.
+ * The value report is $form_state['values'] (see http://drupal.org/node/144132#form-state).
+ */
+function dlts_solr_settings_validate($form, &$form_state) {
+  drupal_set_message(t('<a href="!reindexing">Please queue content for reindexing</a>', array('!reindexing' => url('admin/config/search/apachesolr/index/confirm/clear'))));
+}
+
+/**
+ * Encode and return the base64 value of a image file 
+ */
+function dlts_solr_imagedataURI($image) {
+  if ( is_file($image) ) {
+    return base64_encode(file_get_contents($image));
+  }
+}
+
+function dlts_solr_apachesolr_search_book_filter_identifier_page_json($identifier = '', $keys = '') {
+  
+  /** Include apachesolr_search forms */
+  module_load_include('inc', 'apachesolr_search', 'apachesolr_search.pages');
+
+  $query_params = drupal_get_query_parameters($_GET, array('q'));
+  
+  $results = $conditions = $build = array();
+    
+  $start = 0;
+  
+  $rows = 10;  
+  
+  if (isset($query_params['start'])) {
+   $start = $query_params['start'];
+  }
+  
+  if (isset($query_params['rows'])) {
+   $rows = $query_params['rows'];
+  }
+  
+  if (isset($query_params['fl'])) {
+    $fl = $query_params['fl'];
+  }
+  
+  $solrsort = isset($query_params ['solrsort']) ? $query_params['solrsort'] : '';
+
+  $empty_search_behavior = isset($conditions['apachesolr_search_browse']) ? $conditions['apachesolr_search_browse'] : '';
+  
+  /** Filter by "book" and book identifier */
+  $filters =  array(
+    'bundle:dlts_book_page', 
+    'ss_identifer:' . $identifier
+  );
+
+  $search_page = new DLTSSolrPage('books/' . $identifier . '/services/search');
+
+  try {
+    $solr = apachesolr_get_solr($search_page->env_id);
+    if ($keys || !empty($conditions) || $empty_search_behavior == 'results') {
+      $params = array(
+        'q' => $keys,
+        'rows' => $rows,
+        'start' => $start,
+        'omitHeader' =>  'false',
+        'fl' => $fl,
+        'fq' => $filters,
+      );
+      $results = dlts_solr_apachesolr_search_run('apachesolr', $params, $solrsort, $search_page->search_path, pager_find_page(), $solr);
+    }
+  }
+
+  catch (Exception $e) {
+    watchdog('DLTS Apache Solr', nl2br(check_plain($e->getMessage())), NULL, WATCHDOG_ERROR);
+    apachesolr_failure(t('DLTS Apache Solr search'), $keys);
+  }
+
+  return $results;
+}
+
+/**
+ * Returns search results for DLTS Books search pages.
+ * e.g., books/%identifier/search/[key]
+ *
+ * @param $identifier
+ *   First argument from the path used to filter by book identifier.
+ * @param $key
+ *   Search terms.
+ */
+function dlts_solr_apachesolr_search_book_filter_identifier_page($identifier = '', $keys = '') {
+   
+  /* Creat a "DLTS Book page" object */
+  $search_page = new DLTSSolrPage('books/' . $identifier . '/search');
+
+  /* Filter by "is book" and book identifier */
+  $filters =  array(
+    'bundle:dlts_book_page', 
+    'ss_identifer:' . $identifier
+  );
+
+  return _dlts_solr_apachesolr_search_pages($keys, $filters, $search_page);
+
+}
+
+/**
+ * Returns search results for DLTS Solr search pages.
+ *
+ * @param $key
+ *   Search terms.
+ * @param $filter
+ *   Array of Solr filters (fq)
+ * @param $search_page
+ *   Well-formed search_page object
+ *
+ * Taken from: apachesolr_search_user_defined_search_page
+ */
+function _dlts_solr_apachesolr_search_pages( $keys = '', array $filters = NULL, $search_page, $delivery = null) {
+
+  $conditions = $build = array();
+  
+  $query_params = drupal_get_query_parameters($_GET, array('q'));
+
+  $solrsort = isset($query_params['solrsort']) ? $query_params['solrsort'] : '';
+  
+  /*
+   * Include apachesolr_search forms
+   */
+
+  module_load_include('inc', 'apachesolr_search', 'apachesolr_search.pages');
+
+  /*
+   * We may also have filters added by facet API module. The 'f'
+   * is determined by constant FacetapiAdapter::FILTER_KEY. Hard
+   * coded here to avoid extra class loading.
+   */
+  if (!empty($query_params['f']) && is_array($query_params['f'])) {
+    if (module_exists('facetapi')) {
+      $conditions['f'] = $query_params['f'];
+    }
+  }
+
+  $empty_search_behavior = 'results';
+  
+  try {
+
+    $solr = apachesolr_get_solr($search_page->env_id);
+    
+    /*
+     * Adds the search form to the page.
+     */
+    $build['search_form'] = drupal_get_form('apachesolr_search_custom_page_search_form', $search_page, $keys);
+
+    if (!$keys && empty($conditions) && ($empty_search_behavior == 'browse' || $empty_search_behavior == 'blocks')) {
+
+      /*
+       * Pass empty search behavior as string on to apachesolr_search_search_page()
+       */
+      $results = apachesolr_search_run('apachesolr', $filters, '', $search_page->search_path, 0, $solr);
+      
+      if ($empty_search_behavior == 'browse') {
+
+        /*
+         * Hide sidebar blocks for content-area browsing instead.
+         */
+
+        apachesolr_suppress_blocks(TRUE);
+      }
+
+      $build['search_results'] = apachesolr_search_page_browse($empty_search_behavior);
+    }
+    
+    elseif ($keys || !empty($conditions) || $empty_search_behavior == 'results') {
+      $results = apachesolr_search_run('apachesolr', array('q' => $keys, $filters), $solrsort, $search_page->search_path, pager_find_page(), $solr);
+      
+      /*
+       * Adds search results to the render array.
+       */
+      $build['search_results'] = array(
+        '#theme' => 'search_results',
+        '#results' => $results,
+        '#module' => 'apachesolr_search',
+      );
+    }
+  }
+  catch (Exception $e) {
+    watchdog('DLTS Apache Solr', nl2br(check_plain($e->getMessage())), NULL, WATCHDOG_ERROR);
+    apachesolr_failure(t('DLTS Apache Solr search'), $keys);
+  }
+  return $build;
+}
+
+/**
+ * Execute a search results based on keyword, filter, and sort strings.
+ *
+ * @param $name
+ * @param $params
+ *   Array - 'q' is the keywords to search.
+ * @param $solrsort
+ * @param $base_path
+ *   For constructing filter and sort links. Leave empty unless the links need to point somewhere
+ *   other than the base path of the current request.
+ * @param integer $page
+ *   For pagination.
+ * @param $caller
+ *
+ * @return stdClass $response
+ *
+ * @throws Exception
+ */
+function dlts_solr_apachesolr_search_run($name, array $params = array(), $solrsort = '', $base_path = '', $page = 0, $solr = NULL) {
+
+  // This is the object that knows about the query coming from the user.
+  $query = apachesolr_drupal_query($name, $params, $solrsort, $base_path, $solr);
+  
+  dlts_solr_apachesolr_search_basic_params($query);
+  
+  if ($query->getParam('q')) {
+    // apachesolr_search_add_spellcheck_params($query);
+  }
+  
+  // Add the paging parameters
+  $query->page = $page;  
+
+  apachesolr_search_add_boost_params($query);
+  
+  if ($query->getParam('q')) {
+    apachesolr_search_highlighting_params($query);
+    if (!$query->getParam('hl.fl')) {
+      $qf = array();
+      foreach ($query->getParam('qf') as $field) {
+        // Truncate off any boost so we get the simple field name.
+        $parts = explode('^', $field, 2);
+        $qf[$parts[0]] = TRUE;
+      }
+      foreach (array('content', 'ts_comments') as $field) {
+        if (isset($qf[$field])) {
+          $query->addParam('hl.fl', $field);
+        }
+      }
+    }
+  }
+  else {
+    // No highlighting, use the teaser as a snippet.
+    $query->addParam('fl', 'teaser');
+  }
+  
+  $query->addParam('fl', 'entity_id');
+
+  // Ommit query alter
+  $query->addParam('omitAlter', 'fl');
+  
+  list($final_query, $response) = apachesolr_do_query($query, $page);
+  $solr_id = $query->solr('getId');
+  apachesolr_has_searched($solr_id, TRUE);
+
+  $results = dlts_solr_apachesolr_search_process_response_json($response, $final_query);
+
+  // Fields that will be included in JSON delivery callback
+  $schema = array('snippet', 'link', 'bundle', 'node' => array('entity_id', 'label'), 'fields' => array('its_field_sequence_number'));
+  
+  dlts_solr_process_json_results($results, $schema);
+
+  return $results;
+}
+
+function dlts_solr_process_json_results(&$results, $schema = array()) {
+  
+  if (isset($results['results']['docs'])) {
+    foreach ($results['results']['docs'] as $position => $result) {      
+      foreach(array_keys($result) as $key) {      
+        if (is_array($result[$key])) {
+          if (array_key_exists($key, $schema)) {
+            foreach($result[$key] as $field => $value) {
+              $results['results']['docs'][$position][$field] = $value;
+            }
+          }
+          unset($results['results']['docs'][$position][$key]);
+        }
+        elseif (is_object($result[$key])) {
+          if (array_key_exists($key, $schema)) {
+            foreach($result[$key] as $field => $value) {
+              if (in_array($field, $schema[$key])) {
+                $results['results']['docs'][$position][$field] = $value;
+              }
+            }
+          }
+          unset($results['results']['docs'][$position][$key]);
+        }
+        elseif (!in_array($key, $schema)) {
+          unset($results['results']['docs'][$position][$key]);
+        }
+      }
+    }
+  }
+}
+
+function dlts_solr_apachesolr_search_process_response_json($response, DrupalSolrQueryInterface $query, $schema = array()) {
+
+  $results = array();
+  $total = $response->response->numFound;
+  
+  if ($total > 0) {
+  
+    // We default to getting snippets from the body content
+    $hl_fl = $query->getParam('hl.fl');
+
+    if (!$hl_fl) {
+      $hl_fl = array('content');
+    }
+
+    $fl = $query->getParam('fl');
+    
+    foreach ($response->response->docs as $doc) {
+    
+      $extra = $result = array();
+      
+      // Start with an empty snippets array.
+      $snippets = array();
+
+      // Find the nicest available snippet.
+      foreach ($hl_fl as $hl_param) {
+        if (isset($response->highlighting->{$doc->id}->$hl_param)) {
+          // Merge arrays preserving keys.
+          foreach ($response->highlighting->{$doc->id}->$hl_param as $values) {
+            $snippets[$hl_param] = $values;
+          }
+        }
+      }
+      
+      // If there's no snippet at this point, add the teaser.
+      if (!$snippets) {
+        if (isset($doc->teaser)) {
+          $snippets[] = truncate_utf8($doc->teaser, 256, TRUE);
+        }
+      }
+      
+      $hook = 'apachesolr_search_snippets__' . $doc->entity_type;
+      
+      if (!empty($doc->bundle)) {
+        $hook .= '__' . $doc->bundle;
+      }
+      
+      $snippet = theme($hook, array('doc' => $doc, 'snippets' => $snippets));
+      
+      if (!isset($doc->content)) {
+        $doc->content = $snippet;
+      }
+        
+      $result['snippet'] = $snippet;
+      $result['snippets'] = $snippets;
+      
+      // Normalize common dates so that we can use Drupal's normal date and
+      // time handling.
+      if (isset($doc->ds_created)) {
+        $doc->created = strtotime($doc->ds_created);
+      }
+      else {
+        $doc->created = NULL;
+      }      
+      
+      if (isset($doc->ds_changed)) {
+        $doc->changed = strtotime($doc->ds_changed);
+      }
+      else {
+        $doc->changed = NULL;
+      }
+      
+      if (isset($doc->tos_name)) {
+        $doc->name = $doc->tos_name;
+      }
+      else {
+        $doc->name = NULL;
+      }
+      
+      // Allow modules to alter each document and its extra information.
+      drupal_alter('apachesolr_search_result', $doc, $extra, $query);
+
+      // Set all expected fields from fl to NULL if they are missing so
+      // as to prevent Notice: Undefined property.
+      foreach ($fl as $field) {
+        if (!isset($doc->{$field})) {
+          $doc->{$field} = NULL;
+        }
+      }
+
+      $result['link'] =  url($doc->path, array('absolute' => TRUE));
+      $result['title'] = htmlspecialchars_decode($doc->label, ENT_QUOTES);
+      $result['score'] = $doc->score;
+      $result['fields'] = (array) $doc;
+      $result['entity_type'] = $doc->entity_type;
+      $result['bundle'] = $doc->bundle;
+      $result['sequence'] = ($doc->its_field_sequence_number) ? $doc->its_field_sequence_number : NULL;
+      
+      // Call entity-type-specific callbacks for extra handling.
+      $function = apachesolr_entity_get_callback($doc->entity_type, 'result callback');
+      if (is_callable($function)) {
+        $function($doc, $result, $extra);
+      }      
+      $result['extra'] = $extra;      
+      $results[] = $result;      
+    }
+    
+    // Hook to allow modifications of the retrieved results
+    foreach (module_implements('apachesolr_process_results') as $module) {
+      $function = $module . '_apachesolr_process_results';
+      $function($results);
+    }    
+  }
+  
+  $return = array(
+    'results' => array(
+      'docs' => $results,
+      'numFound' => $response->response->numFound,
+      'start' => $response->response->start,
+      'rows' => $query->getParam('rows'),
+      'terms' => $query->getParam('q'),
+    )
+  );
+
+  return $return;
+}
+
+/**
+ * Extract using Solr
+ * Taken from apachesolr_attachments, the module is broken and been for a while now 
+ */
+function dlts_solr_extract($filepath) {
+  
+  $solr = apachesolr_get_solr(apachesolr_default_environment());
+  
+  /**
+   * Check that we have a valid filepath.
+   */
+  if (!($filepath) || !is_file($filepath)) {
+    return FALSE;
+  }
+
+  $params = array(
+    'resource.name' => basename($filepath),
+    'extractFormat' => 'text',
+  );
+
+  /**
+   * Construct a multi-part form-data POST body in $data.
+   */
+  $boundary = '--' . md5(uniqid(REQUEST_TIME));
+
+  $data = "--{$boundary}\r\n";
+
+  /**
+   * The 'filename' used here becomes the property name in the response.
+   */ 
+  $data .= 'Content-Disposition: form-data; name="file"; filename="extracted"';
+  $data .= "\r\nContent-Type: application/octet-stream\r\n\r\n";
+  $data .= file_get_contents($filepath);
+  $data .= "\r\n--{$boundary}--\r\n";
+
+  $headers = array('Content-Type' => 'multipart/form-data; boundary=' . $boundary);
+  
+  $options = array(
+    'headers' => $headers,
+    'method' => 'POST',
+    'data' => $data,
+  );
+  
+  $response = $solr->makeServletRequest(DLTS_TIKA, $options);
+  unset($solr);
+  return array($response->extracted);  
+}
+
+/**
+ * Provide image styles.
+ */
+function dlts_solr_image_default_styles() {
+  return array(
+    'dlts_solr_thumb' => array(
+      'effects' => array(
+        array(
+          'name' => 'image_scale', 
+          'data' => array(
+            'width' => 200,
+            'height' => 244,
+            'upscale' => 1,
+          ),
+          'weight' => 0,
+        ),
+      ),
+    ),
+  );
+}
+
+/**
+ * Simple Class to uses as a template for DLTS Solr Page configurations
+ */
+class DLTSSolrPage {
+
+  public $search_path;
+  public $page_id;
+  public $label;
+  public $description;
+  public $page_title;
+  public $env_id;
+  public $settings;
+  // END: Don't need this
+  
+  public function __construct( $a = 'dlts/search', $b = 'dlts', $c = 'Search book pages', $d = 'Search pages across a book', $e = 'Search book pages', $f = 'solr', $g = array()) {
+    $this->search_path = $a;
+    $this->page_id     = $b;
+    $this->label       = $c;
+    $this->description = $d;
+    $this->page_title  = $e;
+    $this->env_id      = $f;
+    $this->settings    = $g;
+  }
+}
+
+function dlts_solr_apachesolr_search_basic_params(DrupalSolrQueryInterface $query = NULL) {
+  
+  $fields = array(
+    'fields' => array(
+      'fl' => array(
+        'id',
+        'entity_id',
+        'entity_type',
+        'bundle',
+        'bundle_name',
+        'label',
+        'is_comment_count',
+        'ds_created',
+        'ds_changed',
+        'score',
+        'path',
+        'url',
+        'is_uid',
+        'tos_name',
+      ),
+    )
+  );
+
+  if ($query) {
+    $query->addParams($fields['fields']);
+    $protected_params = $query->getParams();
+    if (!array_key_exists('rows', $protected_params)) {
+      $query->addParam('rows', 10);
+    }
+  }
+}
+
+
+function dlts_solr_seems_utf8($str)
+{
+    $length = strlen($str);
+    for ($i=0; $i < $length; $i++) {
+        $c = ord($str[$i]);
+        if ($c < 0x80) $n = 0; # 0bbbbbbb
+        elseif (($c & 0xE0) == 0xC0) $n=1; # 110bbbbb
+        elseif (($c & 0xF0) == 0xE0) $n=2; # 1110bbbb
+        elseif (($c & 0xF8) == 0xF0) $n=3; # 11110bbb
+        elseif (($c & 0xFC) == 0xF8) $n=4; # 111110bb
+        elseif (($c & 0xFE) == 0xFC) $n=5; # 1111110b
+        else return false; # Does not match any model
+        for ($j=0; $j<$n; $j++) { # n bytes matching 10bbbbbb follow ?
+            if ((++$i == $length) || ((ord($str[$i]) & 0xC0) != 0x80))
+                return false;
+        }
+    }
+    return true;
+}
+
+/**
+ * Converts all accent characters to ASCII characters.
+ *
+ * If there are no accent characters, then the string given is just returned.
+ *
+ * @param string $string Text that might have accent characters
+ * @return string Filtered string with replaced "nice" characters.
+ */
+function dlts_solr_remove_accents($string) {
+    if ( !preg_match('/[\x80-\xff]/', $string) )
+        return $string;
+
+    if (dlts_solr_seems_utf8($string)) {
+        $chars = array(
+        // Decompositions for Latin-1 Supplement
+        chr(195).chr(128) => 'A', chr(195).chr(129) => 'A',
+        chr(195).chr(130) => 'A', chr(195).chr(131) => 'A',
+        chr(195).chr(132) => 'A', chr(195).chr(133) => 'A',
+        chr(195).chr(135) => 'C', chr(195).chr(136) => 'E',
+        chr(195).chr(137) => 'E', chr(195).chr(138) => 'E',
+        chr(195).chr(139) => 'E', chr(195).chr(140) => 'I',
+        chr(195).chr(141) => 'I', chr(195).chr(142) => 'I',
+        chr(195).chr(143) => 'I', chr(195).chr(145) => 'N',
+        chr(195).chr(146) => 'O', chr(195).chr(147) => 'O',
+        chr(195).chr(148) => 'O', chr(195).chr(149) => 'O',
+        chr(195).chr(150) => 'O', chr(195).chr(153) => 'U',
+        chr(195).chr(154) => 'U', chr(195).chr(155) => 'U',
+        chr(195).chr(156) => 'U', chr(195).chr(157) => 'Y',
+        chr(195).chr(159) => 's', chr(195).chr(160) => 'a',
+        chr(195).chr(161) => 'a', chr(195).chr(162) => 'a',
+        chr(195).chr(163) => 'a', chr(195).chr(164) => 'a',
+        chr(195).chr(165) => 'a', chr(195).chr(167) => 'c',
+        chr(195).chr(168) => 'e', chr(195).chr(169) => 'e',
+        chr(195).chr(170) => 'e', chr(195).chr(171) => 'e',
+        chr(195).chr(172) => 'i', chr(195).chr(173) => 'i',
+        chr(195).chr(174) => 'i', chr(195).chr(175) => 'i',
+        chr(195).chr(177) => 'n', chr(195).chr(178) => 'o',
+        chr(195).chr(179) => 'o', chr(195).chr(180) => 'o',
+        chr(195).chr(181) => 'o', chr(195).chr(182) => 'o',
+        chr(195).chr(182) => 'o', chr(195).chr(185) => 'u',
+        chr(195).chr(186) => 'u', chr(195).chr(187) => 'u',
+        chr(195).chr(188) => 'u', chr(195).chr(189) => 'y',
+        chr(195).chr(191) => 'y',
+        // Decompositions for Latin Extended-A
+        chr(196).chr(128) => 'A', chr(196).chr(129) => 'a',
+        chr(196).chr(130) => 'A', chr(196).chr(131) => 'a',
+        chr(196).chr(132) => 'A', chr(196).chr(133) => 'a',
+        chr(196).chr(134) => 'C', chr(196).chr(135) => 'c',
+        chr(196).chr(136) => 'C', chr(196).chr(137) => 'c',
+        chr(196).chr(138) => 'C', chr(196).chr(139) => 'c',
+        chr(196).chr(140) => 'C', chr(196).chr(141) => 'c',
+        chr(196).chr(142) => 'D', chr(196).chr(143) => 'd',
+        chr(196).chr(144) => 'D', chr(196).chr(145) => 'd',
+        chr(196).chr(146) => 'E', chr(196).chr(147) => 'e',
+        chr(196).chr(148) => 'E', chr(196).chr(149) => 'e',
+        chr(196).chr(150) => 'E', chr(196).chr(151) => 'e',
+        chr(196).chr(152) => 'E', chr(196).chr(153) => 'e',
+        chr(196).chr(154) => 'E', chr(196).chr(155) => 'e',
+        chr(196).chr(156) => 'G', chr(196).chr(157) => 'g',
+        chr(196).chr(158) => 'G', chr(196).chr(159) => 'g',
+        chr(196).chr(160) => 'G', chr(196).chr(161) => 'g',
+        chr(196).chr(162) => 'G', chr(196).chr(163) => 'g',
+        chr(196).chr(164) => 'H', chr(196).chr(165) => 'h',
+        chr(196).chr(166) => 'H', chr(196).chr(167) => 'h',
+        chr(196).chr(168) => 'I', chr(196).chr(169) => 'i',
+        chr(196).chr(170) => 'I', chr(196).chr(171) => 'i',
+        chr(196).chr(172) => 'I', chr(196).chr(173) => 'i',
+        chr(196).chr(174) => 'I', chr(196).chr(175) => 'i',
+        chr(196).chr(176) => 'I', chr(196).chr(177) => 'i',
+        chr(196).chr(178) => 'IJ',chr(196).chr(179) => 'ij',
+        chr(196).chr(180) => 'J', chr(196).chr(181) => 'j',
+        chr(196).chr(182) => 'K', chr(196).chr(183) => 'k',
+        chr(196).chr(184) => 'k', chr(196).chr(185) => 'L',
+        chr(196).chr(186) => 'l', chr(196).chr(187) => 'L',
+        chr(196).chr(188) => 'l', chr(196).chr(189) => 'L',
+        chr(196).chr(190) => 'l', chr(196).chr(191) => 'L',
+        chr(197).chr(128) => 'l', chr(197).chr(129) => 'L',
+        chr(197).chr(130) => 'l', chr(197).chr(131) => 'N',
+        chr(197).chr(132) => 'n', chr(197).chr(133) => 'N',
+        chr(197).chr(134) => 'n', chr(197).chr(135) => 'N',
+        chr(197).chr(136) => 'n', chr(197).chr(137) => 'N',
+        chr(197).chr(138) => 'n', chr(197).chr(139) => 'N',
+        chr(197).chr(140) => 'O', chr(197).chr(141) => 'o',
+        chr(197).chr(142) => 'O', chr(197).chr(143) => 'o',
+        chr(197).chr(144) => 'O', chr(197).chr(145) => 'o',
+        chr(197).chr(146) => 'OE',chr(197).chr(147) => 'oe',
+        chr(197).chr(148) => 'R',chr(197).chr(149) => 'r',
+        chr(197).chr(150) => 'R',chr(197).chr(151) => 'r',
+        chr(197).chr(152) => 'R',chr(197).chr(153) => 'r',
+        chr(197).chr(154) => 'S',chr(197).chr(155) => 's',
+        chr(197).chr(156) => 'S',chr(197).chr(157) => 's',
+        chr(197).chr(158) => 'S',chr(197).chr(159) => 's',
+        chr(197).chr(160) => 'S', chr(197).chr(161) => 's',
+        chr(197).chr(162) => 'T', chr(197).chr(163) => 't',
+        chr(197).chr(164) => 'T', chr(197).chr(165) => 't',
+        chr(197).chr(166) => 'T', chr(197).chr(167) => 't',
+        chr(197).chr(168) => 'U', chr(197).chr(169) => 'u',
+        chr(197).chr(170) => 'U', chr(197).chr(171) => 'u',
+        chr(197).chr(172) => 'U', chr(197).chr(173) => 'u',
+        chr(197).chr(174) => 'U', chr(197).chr(175) => 'u',
+        chr(197).chr(176) => 'U', chr(197).chr(177) => 'u',
+        chr(197).chr(178) => 'U', chr(197).chr(179) => 'u',
+        chr(197).chr(180) => 'W', chr(197).chr(181) => 'w',
+        chr(197).chr(182) => 'Y', chr(197).chr(183) => 'y',
+        chr(197).chr(184) => 'Y', chr(197).chr(185) => 'Z',
+        chr(197).chr(186) => 'z', chr(197).chr(187) => 'Z',
+        chr(197).chr(188) => 'z', chr(197).chr(189) => 'Z',
+        chr(197).chr(190) => 'z', chr(197).chr(191) => 's',
+        // Euro Sign
+        chr(226).chr(130).chr(172) => 'E',
+        // GBP (Pound) Sign
+        chr(194).chr(163) => '');
+
+        $string = strtr($string, $chars);
+    } else {
+        // Assume ISO-8859-1 if not UTF-8
+        $chars['in'] = chr(128).chr(131).chr(138).chr(142).chr(154).chr(158)
+            .chr(159).chr(162).chr(165).chr(181).chr(192).chr(193).chr(194)
+            .chr(195).chr(196).chr(197).chr(199).chr(200).chr(201).chr(202)
+            .chr(203).chr(204).chr(205).chr(206).chr(207).chr(209).chr(210)
+            .chr(211).chr(212).chr(213).chr(214).chr(216).chr(217).chr(218)
+            .chr(219).chr(220).chr(221).chr(224).chr(225).chr(226).chr(227)
+            .chr(228).chr(229).chr(231).chr(232).chr(233).chr(234).chr(235)
+            .chr(236).chr(237).chr(238).chr(239).chr(241).chr(242).chr(243)
+            .chr(244).chr(245).chr(246).chr(248).chr(249).chr(250).chr(251)
+            .chr(252).chr(253).chr(255);
+
+        $chars['out'] = "EfSZszYcYuAAAAAACEEEEIIIINOOOOOOUUUUYaaaaaaceeeeiiiinoooooouuuuyy";
+
+        $string = strtr($string, $chars['in'], $chars['out']);
+        $double_chars['in'] = array(chr(140), chr(156), chr(198), chr(208), chr(222), chr(223), chr(230), chr(240), chr(254));
+        $double_chars['out'] = array('OE', 'oe', 'AE', 'DH', 'TH', 'ss', 'ae', 'dh', 'th');
+        $string = str_replace($double_chars['in'], $double_chars['out'], $string);
+    }
+
+    return $string;
+}

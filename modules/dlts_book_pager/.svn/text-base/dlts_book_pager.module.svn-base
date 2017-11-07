@@ -1,0 +1,302 @@
+<?php
+// $Id$: dlts_book_pager.module
+
+  /* This is a utility that adds next and previous page links to
+   * DLTS book pages. It uses the hook_node_load function to add navigation links to nodes of type 'dlts_book_page and 'dlts_book_stitched_page'
+	 * http://api.drupal.org/api/function/hook_node_load
+	 * Written by Brian Hoffman (bh@nyu.edu) with contributions by Rasan Rasch
+   */
+   
+  /* Adminstration page:
+   * /admin/settings/dlts-book-pager
+   */
+   
+
+/*
+ * Handle real page urls.
+ */
+function dlts_book_pager_menu() {
+  $items['books/%/page/%'] = array(
+    'title' => 'Handle real page urls.',
+    'page callback' => 'redirect_dlts_real_page',
+    'page arguments' => array(1, 3),
+	  'access callback' => TRUE,
+    'type' => MENU_CALLBACK,
+  );
+  $items['admin/settings/dlts-book-pager'] = array(
+    'title' => t('DLTS Book Pager'),
+    'description' => t('Setting for the DLTS Book Pager.'),
+    'page callback' => 'drupal_get_form',
+    'page arguments' => array('dlts_book_pager_admin'),
+    'access arguments' => array('access administration pages'),
+    'type' => MENU_NORMAL_ITEM,
+  );
+  return $items;
+}
+
+/*
+ * Redirect real page urls.
+ */
+function redirect_dlts_real_page($dlts_id, $real_page_num)
+{
+  $query = new EntityFieldQuery();
+  $query->entityCondition('entity_type', 'node', '=')
+    ->fieldCondition('field_identifier', 'value', $dlts_id, '=');
+  $result = $query->execute();
+  foreach ($result['node'] as $node) {
+    $book_nid = $node->nid;
+  }
+
+  $query_tmpl =
+   "SELECT   real_num.entity_id AS nid,
+             real_num.field_real_page_number_value AS real_no
+    FROM     {field_data_field_real_page_number} real_num,
+             {field_data_field_visible} visible,
+             {field_data_field_book} book
+    WHERE    real_num.entity_id = visible.entity_id
+    AND      real_num.entity_id = book.entity_id
+    AND      visible.field_visible_value = 1
+    AND      book.field_book_nid = $book_nid
+    AND      CAST(real_num.field_real_page_number_value AS UNSIGNED)
+                 %OP% $real_page_num
+    ORDER BY CAST(real_no AS UNSIGNED) %ORDER%
+    LIMIT    1";
+
+  goto_dlts_page($query_tmpl, '=', 'ASC');
+  goto_dlts_page($query_tmpl, '<', 'DESC');
+  goto_dlts_page($query_tmpl, '>', 'ASC');
+
+  drupal_goto("node/$book_nid");
+}
+
+function goto_dlts_page($query_tmpl, $op, $order)
+{
+  $query = str_replace(array('%OP%', '%ORDER%'),
+    array($op, $order), $query_tmpl);
+  $result = db_query($query);
+  if ($result->rowCount() == 1)
+  {
+    $record = $result->fetchObject();
+    drupal_goto("node/$record->nid");
+  }
+}
+
+/**
+ * Implementation of hook_theme().
+ */
+
+function dlts_book_pager_theme() {
+  return array(
+    'dlts_book_pager_button' => array(
+      'arguments' => array(
+        'url' => NULL,
+        'text' => NULL,
+        'attributes' => NULL,
+        'type' => NULL,
+      ),
+    ),
+    'dlts_book_pager_button_inactive' => array(
+      'arguments' => array(
+        'text' => NULL,
+        'attributes' => NULL,
+        'type' => NULL,
+      ),
+    ),
+  );
+}
+
+/**
+ * Basic theming functions used to build the links. 
+ * These can be modified by a designer as necessary
+ */
+function theme_dlts_book_pager_link( $arguments ) {
+  return l( $arguments['text'], $arguments['url'], $arguments );
+}
+
+function theme_dlts_book_pager_span( $arguments ) {
+  return '<span class="' . $arguments['attributes']['class'] . '" title="' . $arguments['attributes']['title'] . '">' . $arguments['attributes']['title'] . '</span>';
+}
+
+/**
+ * When a page or stitched page node is loaded, this function will 
+ * perform some queries to find the entity ids of the previous page, following 
+ * page, etc. It will then add the link to each related page to the node
+ */
+function dlts_book_pager_node_load($nodes, $types) {
+
+  if ( in_array( "dlts_book_page", $types ) || in_array( "dlts_book_stitched_page", $types ) ) {
+    foreach ( $nodes as $node ) {
+
+      switch ( $node->type ) {
+        case 'dlts_book_page' :
+          
+          module_load_include('inc', 'dlts_utilities', 'inc/dlts_utilities.book_page');
+
+          // the book this page belongs to
+          $book_nid = dlts_utilities_book_page_get_book_nid($node);
+
+          // the sequence number of this page
+          $page_sequence_number = dlts_utilities_book_page_get_sequence_number($node);
+
+          // the hand side value of this page
+          $page_hand_side = dlts_utilities_book_page_get_hand_side($node);
+          
+          $query_tmpl = 
+            "SELECT sn.entity_id FROM {field_data_field_sequence_number} sn 
+             LEFT JOIN {field_data_field_visible} v 
+             ON sn.entity_id = v.entity_id 
+             LEFT JOIN {field_data_field_book} b 
+             ON sn.entity_id = b.entity_id 
+             WHERE b.field_book_nid = :bnid 
+             AND sn.field_sequence_number_value %OP% :snum 
+             AND v.field_visible_value = :vis 
+             ORDER BY sn.field_sequence_number_value 
+             %ORDER% LIMIT 1";
+
+          $args_tmpl = array( ':bnid' => $book_nid, ':snum' => $page_sequence_number, ':vis' => 1);
+
+          $show_firstandlast = variable_get('dlts_book_pager_firstandlast', 0);
+					 
+	        # Attach 2 or 4 themed buttons to the node
+			    if ($show_firstandlast) {
+			      $node->firstpage = _build_pager_button($query_tmpl, $args_tmpl, '<', 'ASC', 'first-page', 'Go to first page');
+	          $node->lastpage = _build_pager_button($query_tmpl, $args_tmpl, '>', 'DESC', 'last-page', 'Go to last page');
+	        }
+	        
+	        $node->prevpage = _build_pager_button($query_tmpl, $args_tmpl, '<', 'DESC', 'previous-page', 'Go to previous page');
+	        $node->nextpage = _build_pager_button($query_tmpl, $args_tmpl, '>', 'ASC', 'next-page', 'Go to next page');
+	
+          # Attach toggling button to node
+          # hand side values: 0 = Right; 1= Left
+                    
+          if ( $page_hand_side == 1 ) {            
+            $toggleresult = db_query("SELECT snl.entity_id FROM {field_data_field_sequence_number_left} snl LEFT JOIN {field_data_field_book} b ON snl.entity_id = b.entity_id WHERE b.field_book_nid = :bnid AND snl.field_sequence_number_left_value = :snum LIMIT 1", array( ':bnid' => $book_nid, ':snum' => $page_sequence_number) );
+          }
+          elseif ( $page_hand_side == 0 ) {            
+            $toggleresult = db_query("SELECT snr.entity_id FROM {field_data_field_sequence_number_right} snr LEFT JOIN {field_data_field_book} b ON snr.entity_id = b.entity_id WHERE b.field_book_nid = :bnid AND snr.field_sequence_number_right_value = :snum LIMIT 1", array( ':bnid' => $book_nid, ':snum' => $page_sequence_number) );
+          }
+
+          if ( $toggleresult->rowCount() == 1 ) {
+            $record = $toggleresult->fetchObject();
+				      $node->togglepage = theme('dlts_book_pager_button', array( 
+                'id' => 'toggle-page',
+                'text' => 'Toggle view',
+				        'url' => 'node/' . $record->entity_id, 
+                'active' => TRUE, 
+                'type' => $node->type,
+                ) );
+				  }
+				  else {
+					  $node->togglepage = theme('dlts_book_pager_button', array( 
+              'id' => 'toggle-page',
+              'text' => 'Toggle view',
+              'url' => NULL,
+              'active' => FALSE, 
+              'type' => $node->type,
+              ) );
+    			}
+			  break;
+
+			  case 'dlts_book_stitched_page':
+			  
+          # the book this page belongs to
+			    $field_book = field_get_items('node', $node, 'field_book');
+          $book_nid = array_pop( array_pop( $field_book ) );
+
+          # the left-side sequence number of this double page
+          $field_sequence_number_left = field_get_items('node', $node, 'field_sequence_number_left');
+          $page_sequence_number = array_pop( array_pop( $field_sequence_number_left ) );
+
+          $query_tmpl = 
+            "SELECT sn.entity_id FROM {field_data_field_sequence_number_left} sn 
+             LEFT JOIN {field_data_field_book} b 
+             ON sn.entity_id = b.entity_id 
+             WHERE b.field_book_nid = :bnid 
+             AND sn.field_sequence_number_left_value %OP% :snum 
+             ORDER BY sn.field_sequence_number_left_value 
+             %ORDER% LIMIT 1";
+
+          $args_tmpl = array( ':bnid' => $book_nid, ':snum' => $page_sequence_number);
+
+          $show_firstandlast = variable_get('dlts_book_pager_firstandlast', 0);
+
+	        # Attach 2 or 4 themed buttons to the node
+			    if ($show_firstandlast) {
+			      $node->firstpage = _build_pager_button($query_tmpl, $args_tmpl, '<', 'ASC', 'first-page', 'Go to first page');
+	          $node->lastpage = _build_pager_button($query_tmpl, $args_tmpl, '>', 'DESC', 'last-page', 'Go to last page');
+	        }
+	        
+	        $node->prevpage = _build_pager_button($query_tmpl, $args_tmpl, '<', 'DESC', 'previous-page', 'Go to previous page');
+	        $node->nextpage = _build_pager_button($query_tmpl, $args_tmpl, '>', 'ASC', 'next-page', 'Go to next page');
+	
+          # Attach toggling button to node
+          # hand side values: 0 = Right; 1= Left
+        
+          $toggleresult = db_query("SELECT sn.entity_id FROM {field_data_field_sequence_number} sn LEFT JOIN {field_data_field_book} b ON sn.entity_id = b.entity_id WHERE b.field_book_nid = :bnid AND sn.field_sequence_number_value = :snum LIMIT 1", array( ':bnid' => $book_nid, ':snum' => $page_sequence_number) );
+      
+          if ( $toggleresult->rowCount() == 1 ) {
+            $record = $toggleresult->fetchObject();
+				      $node->togglepage = theme('dlts_book_pager_button', array( 
+                'id' => 'toggle-page',
+                'text' => 'Toggle view',
+				        'url' => 'node/' . $record->entity_id, 
+                'active' => TRUE,
+                'type' => $node->type,
+                ) );
+				  } else {
+					  $node->togglepage = theme('dlts_book_pager_button', array( 
+              'id' => 'toggle-page',
+              'text' => 'Toggle view',
+              'url' => NULL,
+              'active' => FALSE,
+              'type' => $node->type,
+              ) );
+    			}
+			  break;
+		  } //close switch $node-type
+    } //close foreach $nodes as $node
+  } // close if in_array dlts_book_page $types
+}   //close function dlts_book_pager_node_load
+
+
+function _build_pager_button($query_tmpl, $query_args, $op, $order, $button_id, $button_text) {
+  $query = str_replace(array('%OP%', '%ORDER%'), array($op, $order), $query_tmpl);
+  $result = db_query($query, $query_args);
+  if ($result->rowCount() == 1) {
+    $record = $result->fetchObject();
+    return theme('dlts_book_pager_button', array( 
+      'id' => $button_id,
+      'text' => $button_text,
+      'url' => 'node/' . $record->entity_id, 
+      'active' => TRUE, ));
+  } else {
+    return theme('dlts_book_pager_button', array( 
+      'id' => $button_id,
+      'text' => $button_text,
+      'url' => NULL, 
+      'active' => FALSE, ));
+  }
+}
+
+/**
+ * Admin Functions
+ */
+function dlts_book_pager_admin() {
+  $form = array();
+  
+  /* Admin user or theme designer 
+      can turn first and last page buttons on.
+     These buttons are off by default
+  */  
+  $form['dlts_book_pager_firstandlast'] = array(
+    '#type' => 'checkbox',
+    '#title' => t('First and Last Buttons'),
+    '#description' => t('Provide buttons for navigating to first and last page of book'),
+    '#default_value' => variable_get('dlts_book_pager_firstandlast', 0),
+  );
+  return system_settings_form($form);  
+}    
+
+
+
+

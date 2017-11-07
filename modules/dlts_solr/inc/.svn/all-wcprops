@@ -1,0 +1,29 @@
+K 25
+svn:wc:ra_dav:version-url
+V 55
+/svn/dlib/!svn/ver/14648/drupal_modules/7/dlts_solr/inc
+END
+dlts_solr.admin.inc
+K 25
+svn:wc:ra_dav:version-url
+V 75
+/svn/dlib/!svn/ver/12877/drupal_modules/7/dlts_solr/inc/dlts_solr.admin.inc
+END
+dlts_solr.dlts_book.inc
+K 25
+svn:wc:ra_dav:version-url
+V 79
+/svn/dlib/!svn/ver/14648/drupal_modules/7/dlts_solr/inc/dlts_solr.dlts_book.inc
+END
+dlts_solr.translations.inc
+K 25
+svn:wc:ra_dav:version-url
+V 82
+/svn/dlib/!svn/ver/14638/drupal_modules/7/dlts_solr/inc/dlts_solr.translations.inc
+END
+todo.inc
+K 25
+svn:wc:ra_dav:version-url
+V 64
+/svn/dlib/!svn/ver/14626/drupal_modules/7/dlts_solr/inc/todo.inc
+END

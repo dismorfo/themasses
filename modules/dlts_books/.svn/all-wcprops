@@ -1,0 +1,71 @@
+K 25
+svn:wc:ra_dav:version-url
+V 52
+/svn/dlib/!svn/ver/13441/drupal_modules/7/dlts_books
+END
+dlts_books.apachesolr_environments.inc
+K 25
+svn:wc:ra_dav:version-url
+V 91
+/svn/dlib/!svn/ver/13441/drupal_modules/7/dlts_books/dlts_books.apachesolr_environments.inc
+END
+dlts_books.features.taxonomy.inc
+K 25
+svn:wc:ra_dav:version-url
+V 85
+/svn/dlib/!svn/ver/13329/drupal_modules/7/dlts_books/dlts_books.features.taxonomy.inc
+END
+dlts_books.features.user_role.inc
+K 25
+svn:wc:ra_dav:version-url
+V 86
+/svn/dlib/!svn/ver/13338/drupal_modules/7/dlts_books/dlts_books.features.user_role.inc
+END
+dlts_books.module
+K 25
+svn:wc:ra_dav:version-url
+V 70
+/svn/dlib/!svn/ver/13082/drupal_modules/7/dlts_books/dlts_books.module
+END
+dlts_books.apachesolr_search_defaults.inc
+K 25
+svn:wc:ra_dav:version-url
+V 94
+/svn/dlib/!svn/ver/13441/drupal_modules/7/dlts_books/dlts_books.apachesolr_search_defaults.inc
+END
+dlts_books.features.inc
+K 25
+svn:wc:ra_dav:version-url
+V 76
+/svn/dlib/!svn/ver/13441/drupal_modules/7/dlts_books/dlts_books.features.inc
+END
+dlts_books.field_group.inc
+K 25
+svn:wc:ra_dav:version-url
+V 79
+/svn/dlib/!svn/ver/13329/drupal_modules/7/dlts_books/dlts_books.field_group.inc
+END
+dlts_books.features.field.inc
+K 25
+svn:wc:ra_dav:version-url
+V 82
+/svn/dlib/!svn/ver/13329/drupal_modules/7/dlts_books/dlts_books.features.field.inc
+END
+dlts_books.views_default.inc
+K 25
+svn:wc:ra_dav:version-url
+V 81
+/svn/dlib/!svn/ver/13396/drupal_modules/7/dlts_books/dlts_books.views_default.inc
+END
+dlts_books.info
+K 25
+svn:wc:ra_dav:version-url
+V 68
+/svn/dlib/!svn/ver/13443/drupal_modules/7/dlts_books/dlts_books.info
+END
+dlts_books.features.user_permission.inc
+K 25
+svn:wc:ra_dav:version-url
+V 92
+/svn/dlib/!svn/ver/13443/drupal_modules/7/dlts_books/dlts_books.features.user_permission.inc
+END

@@ -1,0 +1,132 @@
+<?php
+/**
+ * @file
+ * Install for a basic entity - need to create the base table for our entity.
+ * This table can have as many colums as you need to keep track of entity-specific
+ * data that will not be added via attached fields.
+ * The minimum information for the entity to work is an id and an entity name.
+ */
+
+/** Implements hook_schema(). */
+function dlts_ocr_schema() {
+  $schema['dlts_ocr'] = array(
+    'description' => 'Stores a record of when a file property changed to determine if it needs indexing by Solr.',
+    'fields' => array(
+      'oid' => array(
+        'description' => 'The primary identifier for a OCR entry.',
+        'type' => 'serial',
+        'unsigned' => TRUE,
+        'not null' => TRUE,
+      ),
+      'nid' => array(
+        'description' => 'The primary identifier for the node to which the OCR entry is attached.',
+        'type' => 'int',
+        'unsigned' => TRUE,
+        'not null' => TRUE,
+        'default' => 0,
+      ),
+      'sequence' => array(
+        'description' => 'The sequence number oif available.',
+        'type' => 'int',
+        'unsigned' => TRUE,
+        'not null' => TRUE,
+        'default' => 0,
+      ),
+      'identifier' => array(
+        'description' => 'The book identifier.',
+        'type' => 'text',
+        'not null' => FALSE,
+        'size' => 'normal',
+      ),
+      'type' => array(
+        'description' => 'The type of the object.',
+        'type' => 'text',
+        'not null' => FALSE,
+        'size' => 'normal',
+      ),        
+      'extracted' => array(
+        'description' => 'TRUE if the OCR entry was extracted',
+        'type' => 'int',
+        'unsigned' => TRUE,
+        'default' => 0,
+      ),
+      'cleaned' => array(
+        'description' => 'TRUE if the OCR entry was cleaned',
+        'type' => 'int',
+        'unsigned' => TRUE,
+        'default' => 0,
+      ),
+      'body' => array(
+        'description' => 'The cached OCR entry.',
+        'type' => 'text',
+        'not null' => FALSE,
+        'size' => 'big',
+      ),
+      'safe_value' => array(
+        'description' => 'OCR Safe value.',
+        'type' => 'text',
+        'not null' => FALSE,
+        'size' => 'big',
+      ),
+    ),
+    'indexes' => array(
+      'nid' => array('nid'),
+      'removed' => array('extracted'),
+    ),
+    'primary key' => array('oid'),
+  );
+  return $schema;
+}
+
+/** Implements hook_schema() */
+
+function dlts_ocr_enable() {
+
+  module_load_include('inc', 'dlts_utilities', 'inc/dlts_utilities.book');
+  module_load_include('inc', 'dlts_utilities', 'inc/dlts_utilities.book_page');
+
+  /** Query db for all the books */
+  $results = db_query('SELECT nid FROM {node} WHERE type = :t1 OR type = :t2', array( ':t1' => 'dlts_book', ':t2' => 'dlts_book_page' ));
+
+  foreach ($results as $value) {
+    $nodes = entity_load('node', array($value->nid));
+    $node = $nodes[$value->nid];
+    switch ($node->type) {
+    
+      case 'dlts_book':
+      
+        $identifier = dlts_utilities_book_get_identifier($node);
+        
+        db_insert('dlts_ocr')->fields(
+          array(
+            'nid' => $node->nid,
+            'type' => $node->type,
+            'identifier' => $identifier
+          )
+        )->execute();
+        break;
+        
+      case 'dlts_book_page':
+      
+        $sequence = dlts_utilities_book_page_get_sequence_number($node);
+        $identifier = dlts_utilities_book_page_get_identifier($node);
+        $safe_value = trim(dlts_utilities_book_page_get_ocr($node));
+      
+        db_insert('dlts_ocr')->fields(
+          array(
+            'nid' => $node->nid,
+            'sequence' => $sequence,
+            'identifier' => $identifier,
+            'type' => $node->type,
+            'extracted' => 1,
+            'safe_value' => $safe_value,
+          )
+        )->execute();
+      
+        break;
+    }
+  }
+}
+
+function dlts_ocr_uninstall() {
+}

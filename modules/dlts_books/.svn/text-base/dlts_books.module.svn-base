@@ -1,0 +1,21 @@
+<?php
+/**
+ * @file
+ * Code for the DLTS Books feature.
+ */
+
+include_once('dlts_books.features.inc');
+
+/*
+ * Implementation of hook_menu
+ * http://api.drupal.org/api/drupal/developer--hooks--core.php/function/hook_menu/7
+ */
+function dlts_books_menu() {
+  return array(
+    'books/homepage' => array(
+      'title' => 'THE MASSES',
+      'page callback' => 'dlts_books_homepage',
+      'access callback' => TRUE,
+    ),
+  );
+}

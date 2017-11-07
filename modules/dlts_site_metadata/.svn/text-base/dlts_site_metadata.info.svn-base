@@ -1,0 +1,8 @@
+name = DLTS Site metadata
+description = Enable clients to request site-specific metadata.
+package = DLTS
+core = 7.x
+
+dependencies[] = dlts_utilities
+
+files[] = dlts_site_metadata.module

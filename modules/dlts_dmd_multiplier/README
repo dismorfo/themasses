@@ -1,0 +1,41 @@
+To use this module:
+
+1. Configure and save an action.
+
+go to admin/config/system/actions
+In the "Create An Advanced Action" dropdown (all the way at the bottom), select "DLTS: Populate DMD based on a chosen source node and fields"
+Click "Create"
+
+On the form, enter a label for your action, select a source node, and select which fields to use. 
+	Unselected fields will not be affected in the target node.
+
+Save your Action.
+
+2. Create a Target Set using Views.
+
+In the Views interface, build a view that captures your target nodes (their DMD will be populated from the source node).
+	Give your view a path in the /admin tree
+	Use Fields
+	Use Format: Table
+	Include a field for "Bulk operations" - this is a checkbox provided by the views_bulk_operations module.
+		Configure the field to enable the action you created in step 1.
+		* Note: If you edit your action, you will need to re-add it to the list of allowed actions in the view field. *
+	
+3. Go to your view and run the action.
+	
+	
+	
+
+TO DO:
+
+*Right now, this module is hardcoded for the 'dlts_book' content type. In the next iteration, it would be good to make
+content type a selector on the config page, and to use Drupal form states to have the Source Node and Source Field options
+dynamically appear after the user selects a content type. Then this module would be usable on any content type.
+
+*Create documentation and adjust the permissions so that end users (site curators, metadata experts) can use the module themselves.
+
+*Some fields (identifier, handle, etc.) should never be overwritten this way. Right now, there is a sanitizer in the module that has some 
+hardcoded exclusions. In the long run, it would be better if this information could be stored with the content type definitions.
+
+*Add an option to the configuration page (checkbox):
+	Overwrite target fields if they are already populated?

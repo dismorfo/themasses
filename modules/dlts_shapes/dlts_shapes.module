@@ -1,0 +1,197 @@
+<?php
+
+/**
+ * Implements hook_menu().
+ */
+function dlts_shapes_menu() {
+  return array(
+    'admin/config/dlts/shapes/ocr/search' => array(
+      'title'              => 'OCR Word Shape Service search',
+      'description'        => 'Administer OCR Word Shape Service.',
+      'page callback'      => 'drupal_get_form',
+      'page arguments'     => array('dlts_shapes_settings'),
+      'access arguments'   => array('administer search'),
+      'type'               => MENU_LOCAL_TASK,
+      'weight'             => 50,
+      'file'               => 'inc/dlts_shapes.admin.inc',
+    ),
+  );
+}
+
+/**
+ * Implements hook_theme().
+ */
+function dlts_shapes_theme($existing, $type, $theme, $path) {
+  return array(
+    'dlts_shapes_ocr_coordinates_openlayers_js' => array(
+      'variables' => array(
+        'terms' => NULL,
+      ),
+      'file' => 'inc/dlts_shapes.theme.inc',
+    ),
+  );
+}
+
+/**
+ * Implements hook_node_view().
+ */
+function dlts_shapes_node_view($node, $view_mode = 'full', $langcode = NULL) {
+
+  $parameters = drupal_get_query_parameters($_GET, array('q'));
+
+  $coid = ($parameters['coid']) ? $parameters['coid'] : FALSE;
+
+  $searchTerms = ($parameters['searchTerms'] && !empty($parameters['searchTerms'])) ? $parameters['searchTerms'] : NULL;
+
+  /* Load utility functions for book pages */
+  if ($node->type == 'dlts_book_page') {
+
+    module_load_include('inc', 'dlts_utilities', 'inc/dlts_utilities.book_page');
+    
+    /* Get search terms */
+    $searchTerms_safe = explode('+', rawurldecode($searchTerms));
+    
+    /** Get collection id */
+    $collection = $coid ? $coid : dlts_utilities_collection();
+    
+    /** Identifier */
+    $identifier = dlts_utilities_book_page_get_identifier($node);
+    
+    /** Get sequence number */
+    $sequence_number = dlts_utilities_book_page_get_sequence_number($node);
+    
+    /** Request OCR coordinates for given search terms */
+    $coordinates = dlts_shapes_search_ocr_coordinates($identifier, $sequence_number, $collection, $searchTerms);
+    
+    /** Theme coordinates */
+    if ($coordinates) {
+      theme('dlts_shapes_ocr_coordinates_openlayers_js', $coordinates);
+    }
+    
+  }    
+}
+
+/**
+ * Search OCR Word Shape Service and return coordinates
+ *
+ * @param $node
+ * A node object
+ * @return
+ * A keyed array of terms including: term and OCR coordinate
+ *
+ */
+function dlts_shapes_search_ocr_coordinates($book, $sequence_number, $collection = NULL, $terms = NULL) {
+
+  /** Array to hold terms coordinates */
+  $coordinates = array(
+    'terms' => array(),
+  );
+
+  /** If $terms is empty return */
+  if (empty($terms)) {
+    return $coordinates;
+  }
+
+  /** OCR Word Shape Service server URL */
+  $server = variable_get('dlts_shapes_services_url', 'http://localhost:8983/ocrapp');
+  
+  try {
+    
+    /** Initiate Service Object (DrupalApacheSolrService) */
+    $service = dlts_shapes_get_service('dlts_shapes', 'solr');
+    
+    /** Set the service server URL */
+    $service->setUrl($server);
+
+    /** Initiate BaseQuery Object (SolrBaseQuery) */
+    $query = dlts_shapes_base_query('dlts_shapes', array(), '', '', $service);
+    
+    if ($query) {
+      
+      /** Set OR as the search operation */
+      $query->addParam('q.op', 'OR');    
+
+      /** Add params */
+      $params = array(
+        'fl' => array('word', 'openlayers_coords'),
+        'rows' => variable_get('apachesolr_rows', 10),
+      );
+
+      $query->addParams($params);
+      
+      /** Add filters */
+      $query->addFilter('seq_num', $sequence_number);
+      $query->addFilter('item_id', $book);
+      $query->addFilter('collection', $collection);
+      
+      /** Set "word" as the query field */
+      $query->addParam('df', 'word');
+
+      /** Run the search */
+      $response = $query->search($terms);
+      
+      /** We have a valid and not empty response? if we do, transform the result to a OCR Word Shape Service response. */
+      if (isset($response->code) && $response->code == 200 && $response->response->numFound > 0) {
+        foreach($response->response->docs as $key => $doc ) {
+          $coordinates['terms'][$key] = array(
+            'term' => $doc->word,
+            'coordinates' => $doc->openlayers_coords,
+          );
+        }
+      }
+      
+      return $coordinates;
+    }    
+  } 
+  catch (Exception $e) {
+    $msg = t('OCR Word Shape Service') . nl2br(check_plain($e->getMessage())) . ' ' . t('in dlts_shapes_search_ocr_coordinates');
+    watchdog($msg . ' in dlts_shapes_search_ocr_coordinates', NULL, WATCHDOG_ERROR);
+    return array('error' => $msg);
+  }
+}
+
+/*
+ * Implementation of hook_apachesolr_process_results
+ * See: https://drupal.org/node/443986
+ */
+
+function dlts_shapes_apachesolr_process_results(&$results)  {
+  foreach( $results as $key => $result ) {
+    $terms = array();
+    switch ($result['bundle']) {
+      case 'dlts_book_page':
+        /** Find the matches words from the result snippets $result['snippets'] is a array of 1 or more snippet */
+        foreach( (array) $result['snippets'] as $snippet ) {
+          /** Match are enclose within <strong> tags */
+          preg_match_all('/<strong\>(.+?)\<\/strong\>/i', $snippet, $matches);
+          if ( isset( $matches ) ) {
+            $terms = array_merge( $terms, array_unique( $matches[1] ) ) ;
+            unset($matches);
+          }
+        }
+        $results[$key]['link'] = $results[$key]['link'] . '?searchTerms=' . rawurlencode( implode('+', $terms) ) . '&coid=' . dlts_utilities_collection();
+        break;
+
+      default:
+        // nothing to do here
+        break;
+    }
+  }
+}
+
+/*
+ * For now, class later
+ */
+function dlts_shapes_get_service($name, $service = '') {
+  // $service = apachesolr_get_solr($name);
+  $service = apachesolr_get_solr($service, $name); // fx this, not sure what is the problem
+  return $service; 
+  
+}
+
+/*
+ * For now, class later
+ */
+function dlts_shapes_base_query($name, $params = array(), $base_path = '', $service = NULL) {
+  return apachesolr_drupal_query($name, $params, $base_path, $service);
+}

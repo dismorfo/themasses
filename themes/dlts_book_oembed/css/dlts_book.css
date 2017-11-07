@@ -1,0 +1,57 @@
+/* line 1, ../sass/dlts_book.scss */
+html, body, .dlts_image_map {
+  width: 100%;
+  height: 100%;
+}
+
+/*
+ * TODO: Remove !important? 
+ */
+/* line 9, ../sass/dlts_book.scss */
+html, body {
+  overflow: hidden;
+  margin: 0 !important;
+  padding: 0 !important;
+}
+
+/*
+ * TODO: Remove? 
+ */
+/* line 18, ../sass/dlts_book.scss */
+.dlts_image_map {
+  float: none;
+}
+
+/*
+ * TODO: Remove? This should be part of the parent theme 
+ */
+/* line 25, ../sass/dlts_book.scss */
+#control-zoom div div {
+  cursor: pointer;
+}
+
+/*
+ * TODO: Remove? This should be part of the parent theme 
+ */
+/* line 33, ../sass/dlts_book.scss */
+#control-zoom div.zoom-maxed div,
+#control-zoom div.zoom-maxed div:hover {
+  cursor: default;
+  opacity: 0.2;
+}
+
+/*
+ * TODO: Remove? This should be part of the parent theme 
+ */
+/* line 41, ../sass/dlts_book.scss */
+#control-zoom div.zoom-maxed-in div {
+  background-position: -268px 0;
+}
+
+/*
+ * TODO: Remove? This should be part of the parent theme 
+ */
+/* line 48, ../sass/dlts_book.scss */
+#control-zoom div.zoom-maxed-out div {
+  background-position: -224px 0;
+}
