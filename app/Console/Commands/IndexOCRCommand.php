@@ -7,9 +7,10 @@ use Illuminate\Console\Command;
 
 class IndexOCRCommand extends Command
 {
-    protected $signature = 'ocr:index {--recreate : Recreate the index before indexing}';
 
-    protected $description = 'Index all OCR files from storage to Elasticsearch';
+    protected $signature = 'ocr:index {identifier? : The book identifier to index} {--recreate : Recreate the index before indexing}';
+
+    protected $description = 'Index OCR files from storage to Elasticsearch (optionally a single book). Use flag --verbose to output detailed information about indexing';
 
     public function __construct(
         private ElasticsearchOCRService $elasticsearch
@@ -39,6 +40,22 @@ class IndexOCRCommand extends Command
             return Command::FAILURE;
         }
 
+        $identifier = $this->argument('identifier');
+
+        if ($identifier) {
+            if (! is_dir($ocrPath.'/'.$identifier)) {
+                $this->warn("OCR directory not found for identifier: $identifier");
+
+                return Command::FAILURE;
+            }
+
+            $this->line("Indexing book: $identifier");
+            $totalIndexed = $this->indexBookOCR($identifier);
+            $this->info("Successfully indexed $totalIndexed OCR entries!");
+
+            return Command::SUCCESS;
+        }
+
         $directories = array_filter(glob($ocrPath.'/*'), 'is_dir');
 
         if (empty($directories)) {
@@ -56,8 +73,11 @@ class IndexOCRCommand extends Command
         $totalIndexed = 0;
 
         foreach ($directories as $dir) {
-            $identifier = basename($dir);
-            $indexed = $this->indexBookOCR($identifier);
+            $bookIdentifier = basename($dir);
+            if ($this->option('verbose')) {
+                $this->line("Indexing book: $bookIdentifier");
+            }
+            $indexed = $this->indexBookOCR($bookIdentifier);
             $totalIndexed += $indexed;
             $bar->advance();
         }
@@ -92,6 +112,11 @@ class IndexOCRCommand extends Command
                 continue;
             }
 
+            $fileName = basename($file);
+            if ($this->option('verbose')) {
+                $this->line("  Processing file: $fileName");
+            }
+
             $previousUseInternalErrors = libxml_use_internal_errors(true);
             $dom = new \DOMDocument;
             $dom->loadHTML($content);
@@ -122,17 +147,21 @@ class IndexOCRCommand extends Command
                         $bulkParams['body'][] = array_merge($lineData, ['is_shingle' => false]);
                         $totalIndexed++;
 
+                        if ($this->option('verbose')) {
+                            $this->line("    [Line] Text: \"{$lineData['text']}\" | Coords: {$lineData['coords']} | Confidence: ".round($lineData['confidence'] * 100, 2)."%");
+                        }
+
                         if ($prevLineData) {
                             $shingleText = $prevLineData['text'].' '.$lineData['text'];
                             $shingleLocationKey = $prevLineData['location_key'].'|'.$lineData['location_key'];
                             $shingleCoords = $this->mergeCoords($prevLineData['coords'], $lineData['coords']);
-
+                            $avgConfidence = ($prevLineData['confidence'] + $lineData['confidence']) / 2;
                             if ($shingleCoords !== null) {
                                 $bulkParams['body'][] = ['index' => ['_index' => $indexName]];
                                 $bulkParams['body'][] = [
                                     'text' => $shingleText,
                                     'text_normalized' => $this->elasticsearch->normalizeText($shingleText),
-                                    'confidence' => ($prevLineData['confidence'] + $lineData['confidence']) / 2,
+                                    'confidence' => $avgConfidence,
                                     'manifest' => $identifier,
                                     'canvas' => $canvasId,
                                     'coords' => $shingleCoords,
@@ -141,6 +170,14 @@ class IndexOCRCommand extends Command
                                     'timestamp' => now()->toIso8601String(),
                                 ];
                                 $totalIndexed++;
+                                // if ($this->option('verbose')) {
+                                //     $this->line("");
+                                //     $this->line("    [Shingle] Merged \"{$prevLineData['text']}\" + \"{$lineData['text']}\" -> \"$shingleText\"");
+                                //     $this->line("      -- Prev Coords: {$prevLineData['coords']} (conf: ".round($prevLineData['confidence'] * 100, 2)."%)");
+                                //     $this->line("      -- Curr Coords: {$lineData['coords']} (conf: ".round($lineData['confidence'] * 100, 2)."%)");
+                                //     $this->line("      -- Merged Coords: $shingleCoords | Avg Confidence: ".round($avgConfidence * 100, 2)."%");
+                                //     $this->line("");
+                                // }
                             }
                         }
                         $prevLineData = $lineData;
