@@ -1,4 +1,0 @@
-name = OCR Entity
-description = Set up OCR entity.
-core = 7.x
-package = DLTS
