@@ -1,4 +1,0 @@
-name = ImageConvert
-description = Converts images into a different format.
-core = 7.x
-version = "7.x-1.0-dev"
